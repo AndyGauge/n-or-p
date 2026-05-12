@@ -1,850 +1,844 @@
-// N or P — a self-teaching book on the P and NP classes, written in Rust.
+// N or P — a working manager's guide to which engineering problems are cheap
+// to solve, which are expensive, and how to tell them apart in a planning
+// meeting.  The single most expensive mistake in technical decision-making is
+// treating a solved problem as if it were an open research question — or
+// vice-versa.  Each page names a class of problem you actually have at work,
+// the kind of solution it deserves, and the cost of getting that wrong.
 //
-// The thesis: most "hard" problems you meet in code are not actually hard.
-// They are P-class problems wearing NP-complete clothing.  Learning to tell
-// them apart is the entire skill.  Each page pairs a problem with the named
-// algorithm that solves it, and the Rust crate that solves it best.
-//
-// Part I  — The classes (01–05)
-// Part II — P, with Rust (06–22)
-// Part III— NP-complete, with Rust (23–32)
-// Part IV — When you cannot solve exactly (33–36)
-// Part V  — The diagnostic spine (37–39)
+// Part I  — The two classes that decide everything (01–05)
+// Part II — Problems that are already solved (06–22)
+// Part III— Problems that are genuinely hard (23–32)
+// Part IV — When "hard" hits your roadmap (33–36)
+// Part V  — The diagnostic — how to tell, in a meeting (37–39)
 
 const raw = [
-  // ───────────────────────── Part I — The classes ─────────────────────────
+  // ──────── Part I — The two classes that decide everything ────────
   {
-    title: 'P vs NP',
-    tldr: 'P is solve-fast.  NP is verify-fast.  Whether they are the same class is the open question.',
-    gesture: 'Two classes, one unproven equality, and the reason every algorithm choice is also a class declaration.',
-    body: `P is the set of decision problems solvable in polynomial time on a deterministic Turing machine — there is an algorithm whose worst-case running time is bounded by some polynomial in the input size.  NP is the set of decision problems verifiable in polynomial time given a witness — a yes-answer comes with a certificate that can be checked fast, even when finding the certificate is hard.  Every problem in P sits inside NP because the solver doubles as the verifier.  The open question P = NP asks whether finding is as easy as checking.  Stephen Cook formalized the question in 1971 and Leonid Levin independently in 1973.  No proof either way exists.  The class your problem lives in determines which Rust tools belong in the toolbox.`,
-    citation: 'Cook, S. A. (1971). *The Complexity of Theorem-Proving Procedures.* STOC.  Sipser, M. (2013). *Introduction to the Theory of Computation,* 3rd ed.',
+    title: 'P and NP — the two classes',
+    tldr: 'Some problems are cheap to solve forever.  Some are cheap to check but expensive to solve.  The first kind is called P.  The second is NP.',
+    gesture: 'Two categories of computing problem — and the line between them is the line that decides your engineering budget.',
+    body: `Computing problems split into two categories that matter for every estimate your team makes.  Category one — known as P — covers problems with a known, fast solution.  Doubling the size of the input only multiplies the work by a predictable factor.  Routing, sorting, matching, scheduling on one machine — all in P.  Category two — known as NP — covers problems where, if someone hands you a candidate answer, you can verify it quickly, but finding the answer in the first place may take forever.  Sudoku is the everyday example.  Whether every NP problem is also in P is the most famous unsolved question in computer science.  The working assumption — and the basis of every engineering plan — is that the two are different.  Knowing which category a problem lives in determines whether the work is a week or a quarter.`,
+    citation: 'Cook, S. (1971).  Sipser, M. (2013) *Introduction to the Theory of Computation* is the textbook reference.',
     link: 'https://en.wikipedia.org/wiki/P_versus_NP_problem',
-    eli5: `Computer scientists sort problems by how much work it takes to solve them.  The most useful sorting puts problems into classes based on how the work grows with the size of the input.  If you double the input and the work merely doubles, or quadruples, or grows by some polynomial, that is fast.  If the work doubles every time you add one item to the input, that is slow — exponential.  The first class is called P.  The second class is the swamp.
+    eli5: `Almost every estimating error in engineering comes from misreading which category a problem belongs to.  When the team treats a P-class problem as if it were NP — building elaborate heuristics, buying expensive solvers, hiring optimization specialists — the work takes weeks instead of an afternoon.  When the team treats an NP problem as if it were P — promising an exact answer at scale, in real time, for free — the project misses every deadline and ships a bad approximation that nobody trusts.
 
-NP is a strange middle.  It is the class of problems where, if someone hands you a candidate answer, you can check it fast — in polynomial time.  Verifying a sudoku solution is easy.  Solving sudoku from scratch on a giant board is not obviously easy.  Verifying that a graph has a Hamiltonian cycle, given the cycle, is easy.  Finding the cycle is the swamp.
+The split is not about how hard the problem feels.  It is about whether a known fast solution exists.  A polynomial-time solution is one where the work grows predictably with the input — double the data, the work roughly doubles or quadruples, but it does not explode.  These problems have been studied for decades, and almost every one has a named algorithm in a Rust crate that an engineer can drop in.  Routing a delivery truck through a road network is P.  Matching tutors to students by availability is P.  Allocating ad slots to bidders with a fixed budget is P.
 
-P sits inside NP because if you can solve fast, you can certainly verify fast — just solve it again and compare.  The question P = NP asks whether the reverse is also true.  If every problem that is fast to verify is also fast to solve, then encryption breaks, drug design becomes trivial, and most of operations research collapses into a single algorithm.  Almost nobody believes this is true, but nobody has proven it false.
+The other category — NP — covers problems where the only honest answer is "we will check candidate solutions until one works."  Some of these have effective approximations.  Some have solvers that work on most real inputs.  Some are genuinely intractable beyond toy sizes.  The Traveling Salesman problem — visit a list of cities in the shortest total tour — is the famous example.
 
-The reason this matters for your code, today, is that the labels are not just theoretical.  When a problem is in P, there is almost always a named algorithm with a tight running time and a Rust crate that implements it well.  When a problem is NP-complete, you are choosing among exact-but-slow, approximate, heuristic, or constraint-solver approaches — different tools, different tradeoffs.  Reaching for an NP-complete tool on a P problem is wasted motion.  Reaching for a P tool on an NP-complete problem is wishful thinking.
+The question P = NP asks whether every NP problem is secretly P, with an undiscovered fast solution.  If so, every codebreaking system on earth fails the next day, and every operations research consultant retires.  Almost nobody believes this is the world.  The plan is to act as if the categories are real.
 
-The class is the contract.  Read it before you write code.`
+The book is a field guide to telling them apart.`
   },
   {
-    title: 'Verifier vs solver',
-    tldr: 'Checking an answer and producing one are not the same job.  The gap between them is where complexity lives.',
-    gesture: 'NP is defined by the verifier, not the solver — and that asymmetry is the whole game.',
-    body: `A verifier for a decision problem is an algorithm that, given an input and a candidate certificate, returns yes or no in polynomial time.  A solver returns yes or no given only the input.  Every NP problem has a polynomial-time verifier by definition.  Whether it has a polynomial-time solver is the per-problem question.  For problems in P, the solver itself is a verifier — feed in the input, ignore the certificate, return the answer.  For NP-complete problems, no polynomial solver is known, but the verifier is trivial: hand the algorithm a sudoku grid and its purported solution and a few rules-checks tell you in microseconds whether it works.  The asymmetry between verifying and producing is where every approximation, every heuristic, every SAT solver lives.`,
-    citation: 'Sipser, M. (2013). *Introduction to the Theory of Computation,* 3rd ed., Chapter 7.',
+    title: 'Checking is cheaper than building',
+    tldr: 'It is much easier to grade a finished answer than to produce one.  That asymmetry is where the entire field of "hard problems" lives.',
+    gesture: 'The gap between verifying an answer and producing one is the whole reason consultants exist.',
+    body: `Every NP problem shares a defining shape: somebody hands you a candidate answer, and you can check it in a reasonable amount of time.  Verifying that a delivery route hits every stop, that a schedule violates no rules, that a circuit design wires up correctly — all fast.  Producing the route, the schedule, the design in the first place can be vastly harder.  The asymmetry between checking and producing is where most of the difficulty in software engineering hides.  Build pipelines are checkers.  Test suites are checkers.  Code review is a checker.  The hard, slow, expensive work — the actual writing, planning, designing — is on the producing side.  When your team can describe a checker for a problem but cannot describe a producer, the problem is probably NP.  Treat the estimate accordingly.`,
+    citation: 'Sipser, M. (2013) *Introduction to the Theory of Computation,* chapter 7.',
     link: 'https://en.wikipedia.org/wiki/NP_(complexity)',
-    eli5: `Imagine two jobs at a math contest.  One person grades the papers.  Another person solves the problems.  Both jobs need to finish before the bell rings.  For most problems, solving is harder than grading.  That is the whole intuition behind NP.
+    eli5: `Think about a math contest.  One person solves the problems.  Another person grades the solutions.  Both jobs have to finish before the bell rings.  Grading is much, much easier than solving — that is why grading happens in minutes and solving takes the whole contest period.  Almost every interesting problem in computing has the same shape.  Checking that an answer is correct is one job.  Finding the answer in the first place is a different and usually much harder job.
 
-A decision problem is a question with a yes-or-no answer.  Does this graph have a path that visits every vertex once?  Is there a set of items totaling exactly $1,000?  Can this Boolean formula be made true?  For each of these, the grader's job is simple — given a proposed answer, walk through it and check the rules.  A path that visits every vertex?  Walk it and count.  A subset summing to $1,000?  Add it up.  A satisfying assignment?  Substitute and evaluate.
+This matters for estimating because the two jobs are easy to confuse.  A product manager looking at a problem like "schedule our drivers to cover every shift with no conflicts" might assume that, since the rules are simple to check, the planning must be simple to do.  It is not.  The rules-checker is a polynomial-time algorithm that fits on one screen.  The planner is an NP-complete optimization that needs an industrial solver.
 
-The solver does not get a candidate.  The solver gets only the problem.  The solver has to find the path, find the subset, find the assignment.  For problems in P, the search is structured enough that a smart algorithm gets there in polynomial time.  For NP-complete problems, every known approach in the worst case is essentially trying many candidates.
+The reverse error is equally common.  A team facing a problem where checking would actually require running an expensive simulation might assume the producer is correspondingly expensive.  Often it is not.  Sometimes the producer is a one-line library call and the team has been overengineering.
 
-The reason this framing matters for Rust code is that it tells you what to build.  If your problem has an obvious fast verifier and no obvious fast solver, you are in NP-complete territory until proven otherwise.  Reach for a SAT solver, a SMT solver, an integer programming solver, or a branch-and-bound search.  If your problem has a fast solver that you can sketch in a few lines, you are in P.  Reach for the named algorithm.
+The skill is reading a problem and asking two questions in sequence: Could I write a checker that runs fast on a finished answer?  If yes, the problem is at most NP — possibly easier.  Then: Do I know of a fast producer?  If yes, the problem is in P and is a known job.  If no, prepare for a search.
 
-Verifier-fast does not mean solver-fast.  That is the gap.`
+Checking is cheap.  Building is the expensive half.  Estimate the half you are actually doing.`
   },
   {
-    title: 'Reducibility',
-    tldr: 'If problem A can be rewritten as problem B in polynomial time, A is no harder than B.',
-    gesture: 'Reductions are arrows between problems.  Follow them and the whole NP-complete catalog falls out of one source.',
-    body: `A polynomial-time reduction from problem A to problem B is a function f, computable in polynomial time, such that x is a yes-instance of A if and only if f(x) is a yes-instance of B.  If such a reduction exists, A is no harder than B, written A ≤ₚ B — a fast solver for B yields a fast solver for A.  Karp formalized this many-one reduction in his 1972 paper proving twenty-one classic problems NP-complete.  The relation is transitive: if A reduces to B and B reduces to C, then A reduces to C.  Reductions are the backbone of the NP-complete catalog — every problem in that set reduces to every other.  Proving a new problem NP-complete means reducing a known NP-complete problem to it.`,
-    citation: 'Karp, R. M. (1972). *Reducibility Among Combinatorial Problems.* In *Complexity of Computer Computations.*  Cook, S. A. (1971). *The Complexity of Theorem-Proving Procedures.* STOC.',
+    title: 'Reducibility — turning one problem into another',
+    tldr: 'If you can rewrite Problem A as Problem B, then a solver for B is also a solver for A.  This is how engineers reuse other people\'s work.',
+    gesture: 'The most leveraged move in engineering is recognizing your new problem is an old problem in disguise.',
+    body: `A reduction is a translation from one problem to another such that solving the translated version solves the original.  If you can translate your problem into a known-solved problem cheaply, you inherit that problem's solution and never have to write your own.  This is the most leveraged move in engineering — and the most under-used one.  An assignment problem ("match drivers to deliveries minimizing total miles") is a reduction away from a published algorithm with a Rust library that handles thousands of items in milliseconds.  A constraint problem ("each shift must have at least two staff, no person works two shifts back-to-back") is a reduction away from a solver that the industry already built.  When your team faces a new problem, the first question is not "what should we build" — it is "what known problem is this in disguise."`,
+    citation: 'Karp, R. (1972) *Reducibility Among Combinatorial Problems.*  The single most cited paper on the subject.',
     link: 'https://en.wikipedia.org/wiki/Polynomial-time_reduction',
-    eli5: `A reduction is a translator.  You have a problem in language A.  You want to use a solver that speaks language B.  A reduction is a function that converts every A-instance into a B-instance such that the answers line up: yes-in-A becomes yes-in-B, no-in-A becomes no-in-B.  If the conversion itself runs in polynomial time, the existence of a fast B-solver implies the existence of a fast A-solver.
+    eli5: `Reductions are the secret superpower of experienced engineers.  Most novel-looking business problems are not novel at all — they are a decades-old textbook problem with the words changed.  "Find which customers to assign to which sales reps" is the assignment problem from 1955.  "Decide which features to ship under a fixed engineering budget" is knapsack from 1957.  "Plan our delivery routes" is vehicle routing from the 1960s.  In every case, an experienced engineer recognizes the underlying shape and reaches for a library or a paper instead of building from scratch.
 
-This is the trick that lets the NP-complete catalog grow without each problem being proven hard from scratch.  Cook proved that SAT is NP-complete in 1971 — every NP problem reduces to SAT, because the Turing machine that verifies the certificate can itself be encoded as a SAT formula.  Once that one cornerstone existed, Karp showed in 1972 that you can reduce SAT to 3-SAT, then 3-SAT to clique, clique to vertex cover, vertex cover to set cover, and so on.  Every new reduction extends the catalog.
+The translation step matters because once you have done it, you inherit decades of research.  Someone has published the algorithm.  Someone has implemented it as a library.  Someone has benchmarked it on instances ten times the size of yours.  The work has already been done.  Your job is to phrase the problem in the right vocabulary.
 
-The practical use of reducibility in your Rust code is bidirectional.  When you spot that your problem is really 0/1 knapsack in disguise, you have proven it is NP-complete and you can reach for the same tools — pseudo-polynomial DP, ILP, or branch-and-bound.  When you spot that a problem you thought was hard actually reduces to bipartite matching or 2-SAT or max-flow, you have just promoted it to P and you can throw away the heuristic and use \`petgraph\`.
+In the other direction, reductions are also how we know certain problems are genuinely hard.  Hundreds of business problems — scheduling, routing, packing, allocating — have been shown to be reducible to each other, all sitting in the same difficulty class.  If one of them turns out to be easy, all of them do.  So far, none of them has.  That cluster of mutually-equivalent hard problems is called NP-complete, and the inability to crack any one of them after fifty years of effort is the strongest evidence that the cluster is genuinely hard.
 
-The arrows go both ways.  Follow them.  The class of your problem might be one rewrite away.`
+The discipline to develop: in any planning meeting, when a new problem comes up, the first thirty minutes belong to "is this actually a known problem."  More often than not, it is.
+
+The biggest cost savings come not from clever code but from recognizing you do not need clever code.`
   },
   {
-    title: 'NP-complete, NP-hard, co-NP — the map',
-    tldr: 'Four labels.  Each one tells you something different about what tools to reach for.',
-    gesture: 'Complexity classes are not a ladder — they are a map.  Knowing the map keeps you from wandering.',
-    body: `NP-complete problems are the hardest in NP — every NP problem reduces to them in polynomial time.  Cook proved SAT NP-complete in 1971; Karp added twenty more in 1972.  NP-hard is a strictly broader label: a problem is NP-hard if every NP problem reduces to it, but it need not itself be in NP.  The halting problem is NP-hard but uncomputable.  Optimization versions of NP-complete decision problems are NP-hard but usually outside NP because the answer is a number rather than a yes/no.  Co-NP is NP turned inside out — the class where no-answers have short certificates.  Tautology checking is the canonical co-NP-complete problem.  P sits in the intersection P = NP ∩ co-NP — at least, that part of the intersection we currently know about.`,
-    citation: 'Garey, M. R., Johnson, D. S. (1979). *Computers and Intractability: A Guide to the Theory of NP-Completeness.* W. H. Freeman.',
+    title: 'Hard, harder, hardest — the labels',
+    tldr: 'NP-complete is "as hard as any NP problem."  NP-hard is "at least that hard, possibly worse."  Knowing the label tells you what to buy.',
+    gesture: 'The vocabulary that separates "expensive but solvable" from "buy the SaaS instead."',
+    body: `Four labels show up in engineering conversations about complexity.  P is the cheap category — fast algorithms exist.  NP-complete is the canonical hard category — every problem in it is as hard as every other, and no fast algorithm is known despite enormous effort.  NP-hard is at least that hard, and may be even harder.  Co-NP is the mirror — problems where catching a violation is easy but proving a clean bill of health is not (compliance auditing has this shape).  When a problem you face is labeled NP-complete, the right responses are: model it carefully and hand it to a commercial solver, settle for an approximation with a known quality bound, or buy a SaaS that handles it.  When a problem is labeled NP-hard but the optimization version, the same options apply with looser quality guarantees.`,
+    citation: 'Garey, M., Johnson, D. (1979) *Computers and Intractability* — the classic catalog of which problems are which.',
     link: 'https://en.wikipedia.org/wiki/NP-completeness',
-    eli5: `Four labels show up over and over.  They are not synonyms.  Mixing them up is a real source of mistakes.
+    eli5: `When someone in a planning meeting says a problem is NP-complete, they mean: this is a known-hard problem, in a club with hundreds of other known-hard problems, and the fact that none of them has fallen to a fast algorithm in over fifty years is the strongest available evidence that none of them ever will.  Treat the estimate accordingly.
 
-NP-complete is the inner circle.  These are the problems that are both in NP and at least as hard as every other NP problem.  SAT, 3-SAT, vertex cover, clique, Hamiltonian cycle, TSP-decision, 0/1 knapsack-decision, graph coloring for three or more colors, subset sum.  When you reduce a new problem to one of these, you have shown the new problem is NP-complete too.
+NP-hard is a slightly broader label.  Optimization versions of NP-complete decision problems — "what is the cheapest schedule" rather than "does a schedule under cost X exist" — are NP-hard.  They are at least as hard as NP-complete and sometimes harder.  Most of operations research lives here.
 
-NP-hard is broader.  A problem is NP-hard if every NP problem reduces to it — but the problem itself does not have to be in NP.  Optimization versions of NP-complete decision problems are NP-hard because their answer is a real number rather than a yes/no.  The halting problem is NP-hard because every NP problem reduces to it, but it sits outside NP because no algorithm — polynomial or otherwise — can verify a no-instance.  NP-hardness is a lower bound.  It says "at least this hard."
+Co-NP is the inversion.  These are problems where confirming a problem (finding a fault, a security flaw, a compliance gap) is easy but certifying the absence of problems is hard.  Software verification, regulatory audit, security scanning — all have co-NP flavor.  You can prove the system is broken by exhibiting one bug.  Proving it is unbroken requires checking everything.
 
-Co-NP is the mirror of NP.  NP is the class of problems where yes-answers have short verifiers.  Co-NP is the class where no-answers do.  Checking that a Boolean formula is a tautology — true under every assignment — is in co-NP, because a counterexample is a short certificate for the no-answer.  Whether NP = co-NP is open and is widely believed to be false.
+The practical implication of these labels is purchasing.  When your team identifies a problem as NP-complete or NP-hard, the menu of options changes.  Building a from-scratch exact solver is not on the menu — it has been tried.  The options are: model the problem as integer programming and call HiGHS or CPLEX (commercial); use a SAT or constraint solver (open source); buy a domain-specific SaaS (Vroom for routing, OptaPlanner for scheduling, Gurobi for general optimization); or design an approximation that is provably good enough.
 
-P lives inside NP ∩ co-NP.  If P = NP, the whole map collapses.  If P ≠ NP, the structure is real and the labels matter.
-
-The reason this map matters for your code is that NP-hard does not always mean "use a SAT solver."  Some NP-hard optimization problems have good polynomial-time approximations.  Some have efficient pseudo-polynomial algorithms.  Some have parameterized algorithms when one dimension of the input is small.  The right tool depends on the exact label.
-
-Read the map before you pick a road.`
+The labels are a vocabulary for procurement.  Learn them and the conversation gets shorter.`
   },
   {
-    title: 'What changes if P = NP',
-    tldr: 'Cryptography breaks.  Optimization becomes trivial.  Mathematical proof becomes automatable.  Almost nobody thinks this is what happens.',
-    gesture: 'The world looks very different on the other side of an unproven equality.',
-    body: `If P = NP, every problem in NP has a polynomial-time solver.  Public-key cryptography collapses — RSA, elliptic curve, lattice-based schemes built on conjectured hardness assumptions all reduce to NP problems whose solvers would become polynomial.  Optimization becomes a one-shot routine: vehicle routing, scheduling, protein folding, drug design, circuit verification, theorem proving — every NP search problem becomes tractable.  Mathematics becomes partly automatable, since finding a short formal proof of a theorem is an NP problem.  The Clay Mathematics Institute offers a million-dollar prize for resolving the question either way.  Most computer scientists believe P ≠ NP — surveys put the share above eighty percent — but the belief has no proof.  Scott Aaronson's essay on the question is the cleanest summary.`,
-    citation: 'Aaronson, S. (2017). *P =? NP.* In *Open Problems in Mathematics,* Springer.  Fortnow, L. (2013). *The Golden Ticket: P, NP, and the Search for the Impossible.* Princeton.',
+    title: 'What if the line collapsed',
+    tldr: 'If P turned out to equal NP — if every hard problem were secretly easy — banking breaks, drug discovery becomes trivial, and most of operations research disappears overnight.',
+    gesture: 'The unproven equality that, if proven, would rewire the entire economy in a week.',
+    body: `The question P = NP asks whether every problem that is fast to check is also fast to solve.  The whole world is betting that the answer is no.  Every public-key cryptosystem (banking, messaging, identity, software updates) rests on the assumption that certain NP problems are genuinely hard.  Most of operations research, drug design, protein folding, and AI training would become trivial if the answer turned out to be yes.  Almost nobody believes that.  Decades of attacks on these problems have produced nothing, and the Clay Mathematics Institute will pay a million dollars to anyone who settles the question either way.  The practical implication for your engineering planning is this: do not bet on P = NP being true.  Treat NP-complete problems as hard, build accordingly, and reach for SaaS solvers or approximations rather than waiting for a breakthrough.`,
+    citation: 'Aaronson, S. (2017) *P =? NP* is the most accessible survey.',
     link: 'https://www.scottaaronson.com/papers/pnp.pdf',
-    eli5: `Most computer science majors learn the P = NP question as an academic curiosity.  It is anything but.  The stakes on each side are immense.
+    eli5: `The P = NP question is the most famous unsolved problem in computer science, and it is also a question about the world economy.  If P turned out to equal NP, the day after the announcement, every encrypted bank transaction would be vulnerable to anyone with a laptop.  Every password-protected service would be compromised.  Every signed software update could be forged.  The internet as a payment and identity system would need to be rebuilt on new foundations.
 
-If P = NP, the modern internet stops working in the way it works today.  Every public-key system in widespread use rests on the assumption that some specific NP problem — factoring integers, computing discrete logarithms, solving lattice problems — is not in P.  A constructive proof that P = NP would, in principle, hand you a polynomial-time algorithm for one of those problems, and from there cascade to all of them.  Banking, messaging, software updates, and identity systems would all need new foundations.
+The upside would be just as dramatic.  Drug discovery, which today requires expensive lab work to find molecules with desired properties, would become a search algorithm — find the binding affinity by computation, not experiment.  Protein folding, which DeepMind partially cracked with AlphaFold in 2020, would collapse into a single algorithm.  Vehicle routing, staff scheduling, supply chain optimization, every NP-complete problem in the business world — solved.  Operations research as a profession would empty out.
 
-The upside side of the same coin is enormous.  Drug design becomes searching the chemical space for molecules with desired binding properties — an NP problem.  Logistics, scheduling, routing — all NP problems.  Protein folding, machine learning training, theorem proving, program synthesis — all reducible in their core search step to NP.  A polynomial-time NP solver would be the single most consequential algorithm in the history of computing.
+The reason almost nobody believes this is that the absence of evidence is now overwhelming.  Fifty years of brilliant researchers attacking specific NP-complete problems for academic glory and commercial reward have produced no polynomial algorithm for any of them.  The known mathematical barriers to a proof of P ≠ NP are nontrivial — but the practical evidence that the problems are genuinely hard is now stacked very high.
 
-The reason almost nobody believes this is the world we live in is the absence of evidence.  Decades of attacks on specific NP-complete problems have produced no polynomial algorithms despite enormous incentive.  The natural-proofs barrier of Razborov-Rudich, the relativization barrier of Baker-Gill-Solovay, and the algebrization barrier of Aaronson-Wigderson all show that any proof of P ≠ NP must use techniques the current proof toolkit lacks.  The question is hard in part because the obvious approaches provably cannot work.
+For business planning today, the working assumption is that P ≠ NP.  This means: when a problem is labeled NP-complete, do not promise an exact, fast solution.  Buy a solver.  Use an approximation.  Outsource to a SaaS.  Set realistic expectations.
 
-For practical Rust code today, the working assumption is P ≠ NP.  Treat NP-complete problems as genuinely hard.  Treat P problems as genuinely tractable.  Build accordingly.
-
-The day the equality flips, every line of code changes.  Until that day, the line between the two classes is the line that matters.`
+The day the equality flips, every contract gets renegotiated.  Until then, plan for the world you live in.`
   },
 
-  // ─────────────────────── Part II — P, with Rust ───────────────────────
+  // ──────── Part II — Problems that are already solved ────────
   {
-    title: 'Sorting and order statistics',
-    tldr: 'Sorting is in P.  The comparison-based ceiling is O(n log n), and Rust\'s std::sort hits it.',
-    gesture: 'Sorting is the canonical P problem — and the place where the standard library is almost always the right answer.',
-    body: `Comparison-based sorting has a proven lower bound of Ω(n log n) — any algorithm that compares pairs of elements must do at least that many comparisons on some input.  Merge sort, heap sort, and well-implemented quicksort hit the bound.  Rust's \`slice::sort\` uses a stable adaptive merge sort (Timsort-derived); \`slice::sort_unstable\` uses pattern-defeating quicksort (pdqsort) with O(n log n) worst case.  When the elements are integers or floats with bounded ranges, you can break the comparison bound — radix sort runs in O(nk) where k is the key width.  Order statistics (the kth-smallest) run in O(n) expected via quickselect or O(n) worst-case via median-of-medians.  Use the standard library unless you can prove a specialized routine wins.`,
-    citation: 'Knuth, D. E. (1998). *The Art of Computer Programming, Volume 3: Sorting and Searching,* 2nd ed.  Sedgewick, R., Wayne, K. (2011). *Algorithms,* 4th ed.',
+    title: 'Sorting — almost never your problem',
+    tldr: 'Putting a list in order is solved.  Your engineers should reach for the standard library.  If they are writing their own sort, ask why.',
+    gesture: 'The first problem any programmer learns, and one of the very few where the standard library is always the right answer.',
+    body: `Sorting a list — by date, by price, by score, by any key — is one of the most studied problems in computing.  The standard library in every modern language ships an implementation that is faster than anything your team will write.  Rust's standard sort handles millions of items per second per core, is well-tested, and degrades gracefully on adversarial inputs.  When sorting becomes a performance question — typically only at the scale of billions of items — the answer is to use a specialized data layout (radix sort for fixed-width keys, external sort for data that does not fit in memory) or a database that does the work for you.  Almost no business has a sorting problem that is not already solved.  If a ticket on your roadmap is "implement custom sorting," ask whether the real ticket is something else.`,
+    citation: 'Knuth, D. (1998) *The Art of Computer Programming, Volume 3.*  Sedgewick, R. (2011) *Algorithms.*',
     link: 'https://doc.rust-lang.org/std/primitive.slice.html#method.sort_unstable',
-    eli5: `Sorting is the most studied algorithm in computer science.  Generations of textbooks open with it.  The reason is that it is simple to state, easy to mess up, and the right answer reveals a deep structural fact: comparison-based sorting cannot beat n log n.
+    eli5: `Sorting is the running example in every introductory programming course.  Generations of students have implemented bubble sort, insertion sort, merge sort, and quicksort as homework.  The result is that every working engineer thinks they understand sorting and almost none of them should ever write a sorting routine in production code.
 
-The proof is a decision-tree argument.  Each comparison of two elements has two outcomes.  A sorting algorithm distinguishes all n-factorial possible permutations.  A binary tree that distinguishes n! leaves has depth at least log₂(n!) ≈ n log n.  So at least one input forces n log n comparisons on any comparison-based sorter.  This is one of the cleanest lower bounds in the field.
+The standard library implementations are the product of decades of tuning.  They handle the cases your team will not think about — already-sorted inputs, mostly-sorted inputs, inputs with many duplicates, inputs that fit in cache versus inputs that do not, inputs with expensive comparison functions versus cheap ones.  Beating a standard library sort on a generic workload is a multi-week project that almost no team has a business reason to attempt.
 
-When you do not need to compare — when the keys are bounded-width integers or strings — you can sort in linear time using radix sort, counting sort, or bucket sort.  These dodge the bound by exploiting key structure, not by being cleverer at comparing.
+There is a theoretical limit to comparison-based sorting that you should know exists — the work grows in proportion to the input times the logarithm of the input.  This means sorting a list ten times larger takes roughly eleven times as long, not a hundred times.  It scales predictably.  Your engineers cannot do better than this without exploiting some special structure of the keys.
 
-For Rust, the practical answer is almost always \`slice::sort_unstable\` for performance or \`slice::sort\` for stability.  The standard library implementations are extensively tuned, branch-predicted, and benchmark-driven.  Hand-rolling a sorter rarely beats them.  When you need a custom comparator, pass a closure.  When you need partial sorting, use \`select_nth_unstable\` for the kth element in linear time.
+The exceptions worth knowing.  When your keys are bounded-width integers or short strings, sorting can be done in time proportional to just the input — radix sort and counting sort skip the comparison limit entirely.  When the data does not fit in memory, you need an external sort algorithm, which databases handle natively.  When you need to pick the top K items rather than sort everything, the standard library has a partial-sort function that runs in linear time.
 
-For radix sort and other non-comparison sorters on integer data, the \`radsort\` and \`rdxsort\` crates exist.  They are worth reaching for when you have tens of millions of keys.
+If a ticket on the roadmap says "improve our sorting performance," the questions to ask are: are we using the standard library, are we sorting more than we need to, and is the right answer actually to push the sort into the database.  Almost always the answer is one of those three.
 
-The lesson sorting teaches the rest of this book is that classes have lower bounds.  Knowing the bound tells you when to stop optimizing.  When the standard library hits the bound, hand-rolling does not.
-
-Stop sorting your own sorts.  Use the std.`
+You do not have a sorting problem.  You have a planning problem.`
   },
   {
-    title: 'Graph traversal — BFS and DFS',
-    tldr: 'Both linear.  The choice between them is about what order you want, not whether the problem is in P.',
-    gesture: 'BFS and DFS are O(V + E).  Most P-class graph problems are a traversal plus bookkeeping.',
-    body: `Breadth-first search and depth-first search both visit every vertex and every edge of a graph in O(V + E) time.  BFS uses a FIFO queue and discovers vertices in order of distance from the source — it computes shortest paths in unweighted graphs.  DFS uses an LIFO stack (or recursion) and discovers vertices along one branch as far as possible before backtracking — it computes finishing times, articulation points, bridges, strongly connected components, and topological orderings.  In Rust, \`petgraph::visit\` provides \`Bfs\`, \`Dfs\`, and \`DfsPostOrder\` iterators that work on any graph type implementing \`IntoNeighbors\`.  Whenever a graph problem can be solved by a single traversal plus constant-time per-vertex work, the problem is in P.`,
-    citation: 'Cormen, T. H., Leiserson, C. E., Rivest, R. L., Stein, C. (2009). *Introduction to Algorithms,* 3rd ed., Chapter 22.',
+    title: 'Traversing a network',
+    tldr: 'Walking through every connected item in a graph — friends-of-friends, dependencies, file trees — is one of the cheapest operations in computing.',
+    gesture: 'Whenever the data shape is "things connected to other things," the operations are cheap.  Plan accordingly.',
+    body: `Any time your data takes the shape of items connected to other items — a social graph, a dependency tree, an org chart, a file system, a workflow — the basic operations are cheap.  Visiting every connected item, finding the shortest chain between two items, detecting cycles, finding clusters — all run in time proportional to the number of items plus the number of connections.  No clever data structure or specialized solver is needed.  The Rust library petgraph implements every standard traversal as one function call.  When a feature request looks like "find everyone this person is connected to within three hops," the engineering estimate is a day.  When it looks like "tell me the most influential person in our network," the estimate may also be a day with the right algorithm (PageRank, see page 22).`,
+    citation: 'Cormen, Leiserson, Rivest, Stein (2009) *Introduction to Algorithms,* chapter 22.',
     link: 'https://docs.rs/petgraph/latest/petgraph/visit/index.html',
-    eli5: `A graph is a set of vertices connected by edges.  Almost every interesting question you can ask about a graph reduces to "visit the vertices in some order and remember what you saw."  Two orders dominate.
+    eli5: `Graph data shows up everywhere in business systems.  Customer relationships, employee org charts, product dependency trees, supply chain links, communication threads, recommendation systems — all graphs.  The good news for planning is that basic graph operations are some of the cheapest things a computer does.
 
-Breadth-first search visits vertices in waves.  Start at the source.  Visit all neighbors of the source.  Then all neighbors of those neighbors that have not yet been seen.  Then the next wave.  Because BFS visits vertices in order of edge-distance from the source, it solves the shortest-path problem on unweighted graphs in one pass.  Maze-solving, peer-to-peer broadcasting, social-network friend-of-friend search — all BFS.
+There are two standard ways to walk a graph: breadth-first (visit everything one hop away, then two hops, then three) and depth-first (follow one branch as far as it goes, then back up and try another).  Both touch every node and every connection exactly once.  Both run in time proportional to the size of the graph.  Most business questions about a graph reduce to one of these two walks plus some bookkeeping.
 
-Depth-first search picks one neighbor, follows it as far as possible, then backtracks.  DFS visits vertices in an order that captures tree structure — entry and exit times, ancestor relationships, back edges.  This is the right tool for cycle detection, topological sort, strongly connected components (Tarjan, Kosaraju), articulation points, bridges, and biconnected components.
+Breadth-first is the right answer for distance questions.  How many degrees of separation between these two users?  Who is within three handoffs of this lead?  Which servers can be reached from the compromised host?  All breadth-first.
 
-In Rust, \`petgraph\` is the graph crate.  Its \`visit\` module exposes BFS and DFS as iterators.  Build a graph with \`Graph\` or \`StableGraph\`, then traverse with \`Bfs::new(&g, start)\` or \`Dfs::new(&g, start)\`.  The traversal returns vertex indices in visit order; you decorate them however your problem demands.
+Depth-first is the right answer for structural questions.  Are there any circular dependencies in this build graph?  Which modules form an isolated subsystem?  What is the right order to apply these database migrations?  All depth-first.
 
-The reason both traversals are in P is that every vertex and edge is touched a constant number of times.  Linear in the input size.  When a graph problem reduces to a single traversal with constant per-step work, it is in P.  When it requires exponentially many traversals — try every permutation, every subset — it lives in NP-complete territory.
+In Rust, the petgraph library exposes both as one-line calls.  Build the graph, ask for a traversal, iterate the result.  Your team should not be writing their own.
 
-The discipline is to ask, before writing any code: can I solve this with one BFS or one DFS?  If yes, do that.`
+The estimating implication is that any feature whose core operation is "walk the graph" should be measured in days, not weeks.  The work is in the data modeling — defining what counts as a node, what counts as an edge, what metadata each carries — not in the traversal itself.
+
+When a graph problem feels expensive, the question to ask is whether you are doing more than one walk per query.  If the same walk is hitting the database every time a user clicks, you need a cache or a precomputed result.  The walk itself is cheap.  Doing it a hundred million times is not.`
   },
   {
-    title: 'Dijkstra — shortest path with non-negative weights',
-    tldr: 'O((V + E) log V) with a binary heap.  petgraph and pathfinding both ship it.',
-    gesture: 'Dijkstra 1959 — the single-source shortest-path algorithm that defines the P-class shape.',
-    body: `Edsger Dijkstra's 1959 algorithm finds shortest paths from a source vertex to every other vertex in a graph with non-negative edge weights.  It maintains a tentative-distance table and repeatedly extracts the unvisited vertex with the smallest tentative distance, relaxing its outgoing edges.  With a binary heap the running time is O((V + E) log V); with a Fibonacci heap it improves to O(V log V + E).  Negative edges break the algorithm — use Bellman-Ford instead.  In Rust, \`petgraph::algo::dijkstra\` returns a HashMap of distances; \`pathfinding::directed::dijkstra::dijkstra\` returns both the path and the cost given a successor closure.  For pathfinding with a heuristic, A* is the same algorithm with priority biased by an admissible estimate of remaining distance.`,
-    citation: 'Dijkstra, E. W. (1959). *A Note on Two Problems in Connexion with Graphs.* Numerische Mathematik 1: 269–271.',
+    title: 'Routing — the shortest path through a network',
+    tldr: 'Finding the cheapest path from A to B in any kind of network is solved.  Every map app uses the same idea.  Your team should reach for the library.',
+    gesture: 'Routing problems are a settled category — and one of the most common places engineering teams waste weeks reinventing the standard answer.',
+    body: `Routing problems — given a network with costs on each link, find the cheapest path from one point to another — are completely solved when all costs are non-negative.  The algorithm is named for Edsger Dijkstra, who published it in 1959.  Every map application, every game pathfinder, every logistics platform uses it.  Cost grows roughly with the size of the network — a network ten times bigger takes about eleven times longer to route through.  Rust's petgraph and pathfinding libraries both implement it as a one-line call.  When your team estimates more than a day on a routing feature with non-negative costs, they are either solving a different problem (negative costs?  See page 09.  Multiple stops in any order?  Page 25) or they are not using the library.`,
+    citation: 'Dijkstra, E. (1959) *A Note on Two Problems in Connexion with Graphs.*',
     link: 'https://docs.rs/petgraph/latest/petgraph/algo/dijkstra/fn.dijkstra.html',
-    eli5: `Edsger Dijkstra came up with the algorithm in twenty minutes at a café in Amsterdam, designing a demo for a new computer.  He wanted something that looked impressive and was easy to explain.  Sixty-five years later it is the foundation of every routing system, every map application, every game pathfinder.
+    eli5: `Edsger Dijkstra invented the shortest-path algorithm in twenty minutes at a café in Amsterdam in 1956.  He published it three years later.  Sixty-five years later, it is the engine inside every map application, every car navigation system, every game pathfinder, every logistics platform, every internet routing protocol.  It is one of the most successful algorithms in the history of computing.
 
-The intuition is greedy with a guarantee.  Maintain a set of vertices whose final shortest distance from the source is known.  Initially that set contains only the source.  Among all vertices not yet in the set, pick the one with the smallest tentative distance — that distance is final, because any other path to it would have to go through an unvisited vertex with already-larger tentative distance, and adding more non-negative edges only makes it longer.  Add that vertex to the set.  Update tentative distances for its neighbors.  Repeat.
+For a business planning purposes, what matters is the shape of the problem it solves.  You have a network of points connected by paths, each path with a cost — distance, time, dollars, latency.  You want the cheapest way to get from one point to another.  As long as no path has negative cost (no reverse-arbitrage), Dijkstra's algorithm finds the answer in time roughly proportional to the size of the network.
 
-The non-negativity assumption is load-bearing.  With a negative edge, a longer path can become shorter than a shorter path by traversing a negative-weight detour.  Dijkstra's greedy commitment to the smallest tentative distance becomes wrong.  For graphs with negative edges, use Bellman-Ford.  For graphs with negative cycles, the shortest-path problem is ill-defined and Bellman-Ford reports it.
+The key word is roughly.  Doubling the network size does not double the work, it slightly more than doubles it — the work grows with the network size times the logarithm of the number of points.  In practice, this means a routing query over a road network of a million intersections takes milliseconds on a single laptop core.  Routing over a hundred million takes a couple of seconds.
 
-In Rust, the cleanest API is \`pathfinding::directed::dijkstra::dijkstra\`, which takes a start node, a successor closure that returns neighbors and edge weights, and a goal closure.  \`petgraph::algo::dijkstra\` is good when your graph is already built and you want all distances.  For A*, \`pathfinding\` offers \`astar\` with the same shape plus a heuristic closure.
+In Rust, the algorithm is a one-line call against either the petgraph library or the pathfinding library.  Your team writes a function that, given a point, returns its neighbors and the cost of each edge.  The library handles the rest.
 
-When you see a shortest-path problem with non-negative weights, you are in P, and you reach for one of these two crates.  Hand-rolling Dijkstra is a learning exercise, not a production answer.
+Where routing becomes harder is when the problem is not actually shortest-path.  If you need to visit many points in any order, that is the Traveling Salesman problem and it is genuinely hard (page 25).  If you have multiple vehicles with capacity constraints, that is vehicle routing and you should buy a SaaS like Vroom or OptiMoR.  If the costs change in real time, that is dynamic routing and you need a different approach.
 
-Find the path.  Move on.`
+But for plain "cheapest path from A to B" with positive costs, the answer is settled.  Use the library.`
   },
   {
-    title: 'Bellman-Ford — shortest path with negative weights',
-    tldr: 'O(VE).  Slower than Dijkstra but handles negative edges and detects negative cycles.',
-    gesture: 'When the edges can be negative, drop Dijkstra and do V−1 passes of edge relaxation.',
-    body: `The Bellman-Ford algorithm computes single-source shortest paths in a graph that may contain negative edge weights.  It performs V−1 passes over all edges, relaxing each edge once per pass; after V−1 passes, every shortest-path distance is correct unless a negative cycle is reachable from the source.  A final pass checks for further relaxation — if any edge still tightens, a negative cycle exists.  Running time is O(VE).  It is named for Richard Bellman (1958) and L. R. Ford Jr. (1956), with Shimbel (1955) sometimes added.  In Rust, \`petgraph::algo::bellman_ford\` returns distances and predecessors, or an error if a negative cycle is found.  Distance-vector routing protocols (RIP) are practical applications.`,
-    citation: 'Bellman, R. (1958). *On a Routing Problem.* Quarterly of Applied Mathematics 16: 87–90.  Ford, L. R. Jr. (1956). *Network Flow Theory.* RAND Corporation.',
+    title: 'Routing when paths can have negative costs',
+    tldr: 'When some paths actually save money — currency arbitrage, refund flows, financial netting — the standard router fails.  A slower but still-cheap variant handles it.',
+    gesture: 'Negative-cost paths break the standard router.  The fix is slower, but it stays cheap.',
+    body: `Some routing problems involve paths with negative cost.  Currency exchange arbitrage is the classic example — a sequence of trades can return more than you started with, expressible as a negative-cost cycle in a graph.  Refund flows in finance, time-shifted scheduling where doing a task earlier saves money, and constraint systems where some inputs offset others all share this shape.  The standard shortest-path algorithm fails on negative costs — it can be tricked into committing to a path that looks short locally but is actually long.  The Bellman-Ford algorithm handles negative costs at a higher computational cost — work grows with the network size times the number of edges, not the logarithm of nodes.  It also detects when a negative-cost cycle exists, which is the signal for "your input data has an arbitrage opportunity."  Rust's petgraph implements it as a single function call.`,
+    citation: 'Bellman, R. (1958) *On a Routing Problem.*  Ford, L. (1956) *Network Flow Theory.*',
     link: 'https://docs.rs/petgraph/latest/petgraph/algo/bellman_ford/fn.bellman_ford.html',
-    eli5: `Most shortest-path discussions stop at Dijkstra.  Bellman-Ford is the algorithm you reach for when Dijkstra's assumption — no negative edges — does not hold.
+    eli5: `Most routing problems have non-negative costs and the standard library handles them.  But a surprising number of business problems have negative-cost edges that you might not initially recognize as routing problems at all.
 
-Negative edges show up more than you expect.  Currency exchange arbitrage: take the negative log of each exchange rate and a negative cycle is a profit cycle.  Financial netting: balances can be either direction.  Time-shifted scheduling: doing a task earlier may save cost.  Constraint difference systems: every \`x_i − x_j ≤ c_ij\` translates to an edge of weight \`c_ij\`, and the constraint system is feasible exactly when the resulting graph has no negative cycle.
+Currency arbitrage is the textbook case.  Take the logarithm of each exchange rate and negate it.  A profitable cycle of trades — buy USD with EUR, EUR with JPY, JPY back to USD with more than you started — becomes a negative-cost cycle in a graph of currency pairs.  Detecting whether arbitrage exists is exactly the question Bellman-Ford answers.
 
-The algorithm is simpler than Dijkstra.  Initialize all distances to infinity, source to zero.  For V−1 rounds, walk through every edge and relax it — if the distance to its tail plus the edge weight is less than the distance to its head, update.  After V−1 rounds, every shortest path that uses at most V−1 edges has been relaxed.  Any simple shortest path uses at most V−1 edges, so we are done.  If a final round still relaxes, there is a negative cycle reachable from the source.
+The same shape shows up in financial netting (some balances are debts, some are credits, find the cheapest way to settle them all).  In time-shifted scheduling (doing a task this week saves cost compared to next week).  In constraint difference systems (every constraint of the form "x must be at most y plus 5" is an edge with weight 5; the system is solvable iff there are no negative cycles).
 
-The O(VE) cost is the price of generality.  In sparse graphs it is competitive; in dense graphs it is much slower than Dijkstra.  When negative edges exist but are rare, the SPFA variant (Shortest Path Faster Algorithm) often runs faster in practice, though its worst case is the same.
+The standard router (Dijkstra, page 08) cannot handle this.  It commits to paths based on local cost decisions, and a single negative edge later in the graph can invalidate those decisions.  Bellman-Ford takes a different approach — it relaxes every edge in the graph repeatedly, enough times to guarantee that every shortest path has been found.  This is slower than Dijkstra but still polynomial — work grows with the product of nodes and edges, not exponentially.
 
-In Rust, \`petgraph::algo::bellman_ford\` is the direct call.  The return type is a Result that captures negative-cycle detection — pattern match on it to handle both outcomes.  For systems-of-difference-constraints feasibility, build the constraint graph and call bellman-ford; the success/failure of the call is your answer.
+The negative-cycle detection is often the most valuable output.  If your input data has negative cycles, your "find the cheapest path" question has no answer (you could go around the cycle forever, getting cheaper).  But the existence of the cycle is itself useful information — it tells you the system has an arbitrage opportunity, a scheduling inconsistency, or a constraint violation.
 
-Negative-edge shortest path stays in P.  The right tool is just slower than Dijkstra.  Reach for it deliberately.`
+In Rust, this is petgraph's bellman_ford function.  Returns the distances or an error indicating the negative cycle.  Twenty lines of glue and your team has the answer.
+
+When the standard router does not fit, the slower router does — and stays in the cheap-to-solve category.`
   },
   {
-    title: 'Floyd-Warshall — all-pairs shortest paths',
-    tldr: 'O(V³).  Dense graphs love it.  Three nested loops and you have every pair distance.',
-    gesture: 'When you want every distance to every other vertex, Floyd-Warshall is three loops and a table.',
-    body: `Floyd-Warshall computes shortest paths between every pair of vertices in O(V³) time and O(V²) space.  Robert Floyd published the form most commonly used in 1962, building on a transitive-closure algorithm by Stephen Warshall the same year.  The algorithm fills a V×V distance matrix by considering each vertex k as a potential intermediate node: for every pair (i, j), test whether going through k is shorter than the current best.  Three nested loops, k outermost.  The algorithm handles negative edge weights but not negative cycles — a negative diagonal entry after completion signals one.  In Rust, \`pathfinding::matrix::matrix\` plus a Floyd-Warshall pass works, or the \`petgraph::algo::floyd_warshall\` function returns the distance matrix directly.  When V is small and the graph is dense, this is the right tool.`,
-    citation: 'Floyd, R. W. (1962). *Algorithm 97: Shortest Path.* Communications of the ACM 5(6): 345.  Warshall, S. (1962). *A Theorem on Boolean Matrices.* JACM 9(1): 11–12.',
+    title: 'Distance from everywhere to everywhere',
+    tldr: 'When you need the distance from every point to every other point — not just one start — there is a one-page algorithm that handles it.',
+    gesture: 'Three nested loops and a table.  When the network is small and you want every distance, this is the answer.',
+    body: `Some questions require knowing the distance between every pair of points in a network, not just from one start.  Travel-time matrices for delivery planning.  Latency tables between data centers.  Reachability matrices for org charts.  The Floyd-Warshall algorithm fills the entire table at once and runs in time proportional to the cube of the number of points.  This sounds expensive but is competitive for networks up to about a thousand nodes — fast enough to recompute on demand for many business uses.  Rust's petgraph implements it directly.  When your network is larger than a few thousand nodes and you need all pairs, run the single-source router (Dijkstra) once per starting point in parallel instead.  When you need a few specific pairs, run it once per pair.`,
+    citation: 'Floyd, R. (1962) *Algorithm 97: Shortest Path.*  Warshall, S. (1962).',
     link: 'https://docs.rs/petgraph/latest/petgraph/algo/floyd_warshall/fn.floyd_warshall.html',
-    eli5: `The Floyd-Warshall algorithm is the most elegant graph algorithm in the canon.  Three nested for-loops over the vertices, one assignment in the middle, and you have the shortest distance between every pair of vertices.  It is the canonical example of dynamic programming on graphs.
+    eli5: `The Floyd-Warshall algorithm is one of the prettiest algorithms in computer science.  It is three nested loops and one assignment in the middle.  When you run it on a network, it fills in a complete table of distances from every point to every other point.
 
-The key insight is the order of the outer loop.  Vertices are numbered 1 through V.  After iteration k, the distance matrix entry D[i][j] holds the length of the shortest path from i to j whose internal vertices are all drawn from \`{1, 2, ..., k}\`.  When k = V, the constraint is empty and D holds true shortest paths.  The recurrence is simply: D[i][j] = min(D[i][j], D[i][k] + D[k][j]).
+The business uses come up more often than you might expect.  Logistics planning often needs a complete travel-time matrix between warehouses or delivery zones.  Multi-tenant systems need latency tables between data centers.  Knowledge graphs need reachability between concepts.  When the network is small enough — up to about a thousand nodes — Floyd-Warshall fills the entire table in seconds.
 
-The O(V³) cost is the algorithm's defining feature.  For dense graphs with V in the low hundreds, this is faster than running Dijkstra V times.  For sparse graphs with V in the thousands, running Dijkstra V times (Johnson's algorithm, properly) wins.
+The cost is that work grows with the cube of the number of nodes.  Doubling the network multiplies the work by eight.  This is fine for small networks and infeasible for large ones.  The crossover where running the single-source router (Dijkstra) once per starting point becomes faster depends on graph density — for sparse networks, Dijkstra-times-n is faster around a few hundred nodes; for dense networks, Floyd-Warshall holds up longer.
 
-The same loop structure also computes transitive closure (replace min/plus with or/and), maximum-capacity paths (replace min/plus with max/min), and matrix multiplication in the tropical semiring.  When you see the pattern, it shows up everywhere.
+The reason to prefer Floyd-Warshall when it fits is simplicity.  The algorithm has no data structures to maintain — just a flat matrix of distances.  It is trivial to parallelize across CPUs.  It is trivial to cache.  When the network does not change often, you compute the table once and look up distances forever after.
 
-In Rust, \`petgraph::algo::floyd_warshall\` is the easy call.  Pass a graph and an edge cost function; receive a HashMap from (NodeIndex, NodeIndex) to weight.  For dense graphs where you want a literal V×V matrix in memory, use \`ndarray\` or a flat Vec and write the three loops by hand — it is short enough that hand-rolling is reasonable and the access pattern is cache-friendly.
+In Rust, petgraph's floyd_warshall function takes a graph and an edge-weight function and returns the distance matrix.  Your team should not be writing this themselves.
 
-The lesson is structural.  Whenever you see "every pair," ask whether you can fill a table.  When you can, you are in P.`
+For larger networks, the right pattern is to precompute the distance matrix in batch (overnight, in a worker process), store it in a database or a key-value store, and serve queries from the precomputed table.  The recomputation is expensive; the lookups are free.
+
+When the question is "every distance to every other place," the answer is in the toolbox.`
   },
   {
-    title: 'Minimum spanning tree',
-    tldr: 'Kruskal sorts edges and union-finds them.  Prim grows a tree.  Both O(E log V).',
-    gesture: 'Connect every vertex with the cheapest edges that form no cycle — a textbook P problem.',
-    body: `A minimum spanning tree of a connected weighted graph is a subset of edges that connects all vertices with the minimum total edge weight.  Kruskal's algorithm (1956) sorts edges by weight and adds them in order, skipping any that would form a cycle — efficient cycle detection uses union-find with path compression and union by rank, yielding O(E log V) or near-linear with the inverse Ackermann factor.  Prim's algorithm (1957, rediscovered Dijkstra 1959) grows the tree from a starting vertex, repeatedly adding the cheapest edge that connects the tree to a new vertex — O(E log V) with a heap.  Borůvka's algorithm (1926) parallelizes well.  In Rust, \`petgraph::algo::min_spanning_tree\` returns an iterator of edges forming the MST.`,
-    citation: 'Kruskal, J. B. (1956). *On the Shortest Spanning Subtree of a Graph and the Traveling Salesman Problem.* Proceedings of the AMS.  Prim, R. C. (1957). *Shortest Connection Networks and Some Generalisations.* Bell System Technical Journal.',
+    title: 'Cheapest network that connects everything',
+    tldr: 'When you need to connect a set of locations with the minimum total wire, road, or cable, there is a greedy algorithm that finds the best answer guaranteed.',
+    gesture: 'Connect every point with the cheapest wires that form no loop.  This is one of the few business problems where greedy is provably optimal.',
+    body: `When you need to connect a set of points — fiber backbone, electrical grid, road network, communication mesh — with the minimum total length of cable or path, the problem is a minimum spanning tree.  Two algorithms find the exact best answer: sort all possible connections by cost and add them in order, skipping any that would form a redundant loop (Kruskal 1956); or grow a tree from any starting point, always adding the cheapest connection to a new point (Prim 1957).  Both are fast — work grows roughly with the number of possible connections.  Rust's petgraph has both.  When the problem changes to "connect this subset, using others as relays if it saves money," it becomes the Steiner tree problem and is genuinely hard (NP-complete, see page 38 for the contrast).  The line between cheap and expensive is whether every point must be connected or only a subset.`,
+    citation: 'Kruskal, J. (1956).  Prim, R. (1957).  Borůvka, O. (1926) is the oldest.',
     link: 'https://docs.rs/petgraph/latest/petgraph/algo/fn.min_spanning_tree.html',
-    eli5: `You have a set of cities and a list of roads with costs.  You want every city connected, with the smallest total road cost.  Every road added has to bring at least one previously-unconnected city online; if it forms a cycle, you are paying for redundancy.
+    eli5: `Connecting a set of locations with the cheapest possible total infrastructure is a classic business problem.  Telecom companies solving fiber rollout.  Utilities planning the grid.  Cloud providers planning data center interconnect.  Logistics companies planning trunk routes.  All minimum spanning tree problems, all solved.
 
-This is the minimum spanning tree problem, and it is one of the cleanest examples of a greedy algorithm provably finding the optimal answer.  The structural fact that makes it work is the cut property: for any partition of the vertices into two sets, the minimum-weight edge crossing the partition is in some MST.  Both Kruskal and Prim are greedy applications of the cut property.
+The algorithms are about as simple as algorithms get.  Kruskal's version: list every possible connection with its cost, sort the list cheapest first, add connections in order, skip any that would create a loop.  Stop when every location is connected.  The result is provably the minimum total cost.  Prim's version: start at any one location, repeatedly add the cheapest connection that reaches a new location.  Same answer.
 
-Kruskal processes edges in sorted order.  An edge is added if its endpoints are in different components, then the two components are merged.  Detecting "different components" is the union-find data structure: each vertex starts in its own component, find returns the root, union merges two components.  Path compression and union-by-rank make the operations nearly constant time amortized.
+The reason greedy works here — and almost nowhere else for genuinely combinatorial problems — is a structural property of spanning trees called the cut property.  For any split of the locations into two groups, the cheapest connection crossing the split must be in some optimal spanning tree.  Both algorithms exploit this fact.  The result is one of the cleanest examples of a greedy algorithm being provably optimal.
 
-Prim grows one tree.  Start at any vertex.  Maintain a priority queue of edges crossing the tree boundary.  Pop the minimum-weight edge; if its outer endpoint is not yet in the tree, add it and add all its new boundary edges.  The structure is identical to Dijkstra with a different relaxation rule.
+In Rust, petgraph's min_spanning_tree function does the work.  Your team feeds in a graph; the library returns the edges of the optimal tree.  This is a half-day feature, not a quarter-long project.
 
-Borůvka is the parallel-friendly cousin.  Every component picks its cheapest outgoing edge simultaneously; all chosen edges are added; components merge.  Repeat until one component remains.  Useful on GPUs.
+The trap to watch for is a variant that looks similar but is actually much harder.  Steiner tree is the problem where you only need to connect a specified subset of locations — and you are allowed to use other locations as relays if it saves money.  This added flexibility breaks the greedy structure.  Steiner tree is NP-complete.  The problem looks innocent in a planning meeting ("connect just these five offices, but route through others if cheaper") and it is the wrong problem to underestimate.
 
-In Rust, \`petgraph::algo::min_spanning_tree\` gives you Kruskal's output; \`min_spanning_tree_prim\` uses Prim's.  Both work on any graph implementing the required traits.
+If every location must be on the network, the work is cheap.  If only a subset must be, the work is expensive.  Read the requirement carefully.
 
-Steiner tree is the same problem with a twist — you only need to connect a subset of vertices, and you may include others as relays.  Adding that twist breaks the greedy structure and pushes the problem into NP-complete territory.  See page 38.
-
-The MST is in P because the greedy works.  The Steiner tree is NP-complete because it doesn't.`
+See page 38 for the cluster of "cheap twin vs expensive twin" pairs.  This is one of the most important.`
   },
   {
-    title: 'Max-flow and min-cut',
-    tldr: 'Ford-Fulkerson is the framework.  Edmonds-Karp is O(VE²).  Dinic is O(V²E).  All in P.',
-    gesture: 'The duality between flow and cut is the deepest theorem in graph algorithms, and the engine behind a dozen P-class reductions.',
-    body: `The max-flow problem asks for the maximum rate of flow from a source to a sink through a directed graph with edge capacities.  The min-cut problem asks for the minimum total capacity of edges whose removal disconnects source from sink.  Ford and Fulkerson proved in 1956 that the two are equal — the max-flow min-cut theorem.  The Ford-Fulkerson method augments flow along an arbitrary path of remaining capacity until none exists; choosing shortest augmenting paths gives the Edmonds-Karp algorithm at O(VE²) (1972).  Dinic's algorithm uses level graphs and blocking flows to reach O(V²E) (1970).  Modern push-relabel variants achieve O(V³) and are fast in practice.  In Rust, \`petgraph::algo::ford_fulkerson\` is a starting point; production work often calls out to highs or LEMON via FFI.`,
-    citation: 'Ford, L. R., Fulkerson, D. R. (1956). *Maximal Flow Through a Network.* Canadian Journal of Mathematics 8: 399–404.  Edmonds, J., Karp, R. M. (1972). *Theoretical Improvements in Algorithmic Efficiency for Network Flow Problems.* JACM 19(2): 248–264.',
+    title: 'Flow, capacity, and bottlenecks',
+    tldr: 'How much water can flow through a network of pipes — and where the bottleneck is — is solved.  Many surprising business problems reduce to this.',
+    gesture: 'Flow through a network is a polynomial problem.  Image segmentation, project selection, sports elimination, ad allocation — all secretly the same problem.',
+    body: `The maximum-flow problem asks: given a network of pipes (or connections, or assignments, or commitments) with capacity on each, how much can flow from a source to a sink?  The companion question, minimum cut, asks: what is the cheapest set of connections to sever to disconnect them?  These two answers are always equal — a famous result from 1956.  Both are computable in polynomial time.  Many business problems that do not look like flow reduce to it: image segmentation in vision, project selection under budget, baseball elimination, advertising slot allocation, image matting, scheduling with resource constraints.  When a team recognizes a flow structure, the problem moves from intractable to a library call.  Rust's petgraph implements the standard flow algorithm.  For larger or more nuanced flow problems, modeling as linear programming (page 19) and calling HiGHS is the production approach.`,
+    citation: 'Ford, L., Fulkerson, D. (1956) *Maximal Flow Through a Network.*',
     link: 'https://docs.rs/petgraph/latest/petgraph/algo/ford_fulkerson/fn.ford_fulkerson.html',
-    eli5: `Imagine a network of pipes from a source to a sink.  Each pipe has a capacity.  You want to push as much water from source to sink as the network allows.
+    eli5: `The maximum-flow problem is the secret backbone of a startling fraction of business optimization problems.  On its face, it is simple: water flows from a source through a network of pipes, each pipe has a capacity, how much water can reach the sink?  The classical theorem — proven by Ford and Fulkerson in 1956 — is that the answer equals the minimum total capacity you would need to cut to disconnect source from sink.  Flow and cut are two sides of the same coin.
 
-The max-flow min-cut theorem says: the maximum water you can push equals the minimum total capacity of any set of pipes whose removal disconnects source from sink.  Cut the bottleneck; the bottleneck is the bound.  This duality is one of the deepest results in combinatorial optimization, and it powers an enormous range of algorithms.
+What makes flow important for business planning is the long list of seemingly unrelated problems that reduce to it.  Matching applicants to jobs subject to capacity constraints (each job can take so many people, each person can take so many jobs)?  Max-flow.  Picking which projects to fund subject to budget?  Max-flow.  Allocating ad slots to advertisers subject to bid and budget constraints?  Max-flow.  Cutting an image into foreground and background based on pixel similarity?  Max-flow.  Determining whether a baseball team is mathematically eliminated from playoff contention?  Max-flow.
 
-The Ford-Fulkerson method computes max-flow by repeatedly finding an augmenting path — a path from source to sink with remaining capacity — and pushing flow along it.  The trick is that the algorithm also maintains a residual graph that allows flow to be "undone" by sending counter-flow.  When no augmenting path exists in the residual graph, the flow is maximum and the set of vertices reachable from the source in the residual graph defines a minimum cut.
+In each case, an experienced engineer recognizes the flow structure and the problem moves from a research project to a library call.  The recognition is the hard part.  The algorithm is decades old.
 
-Edmonds-Karp specifies: always pick the shortest augmenting path (BFS).  This bounds the number of augmentations and yields a polynomial running time.  Dinic refines further by processing all shortest paths of a given length at once via blocking flows on a level graph.
+For modest-sized problems, Rust's petgraph implements the standard Edmonds-Karp algorithm directly.  For larger or more nuanced problems, the right approach is to model the flow as a linear program and dispatch to an LP solver like HiGHS — modern LP solvers handle flow problems with millions of variables in seconds.
 
-The deeper value of max-flow is that many other problems reduce to it.  Bipartite matching is max-flow on the bipartite graph with unit-capacity edges.  Image segmentation is min-cut on a pixel-similarity graph.  Project selection, sports elimination, baseball-elimination problems, assignment problems — all reduce to max-flow.  When you spot a flow structure, you have spotted P.
+The teaching for planning: when a problem involves capacity constraints, source-to-sink shape, or matching with limits, ask whether it reduces to flow.  If yes, the work is days.  If no, look for other reductions before assuming the problem is novel.
 
-In Rust, \`petgraph::algo::ford_fulkerson\` works for small instances.  For larger networks, the practical move is to model the problem as a min-cost flow LP and hand it to \`good_lp\` with the highs backend, or call out to a dedicated solver via FFI.
-
-Flow is in P.  Reduce to flow.`
+Many of your hardest-looking problems are flow problems wearing different clothes.`
   },
   {
-    title: 'Bipartite matching',
-    tldr: 'Hopcroft-Karp runs in O(E√V).  The Hungarian algorithm handles weighted matching in O(V³).',
-    gesture: 'Pair up two sides as much as possible — a P-class workhorse that reduces from flow.',
-    body: `A matching in a bipartite graph (vertices split into two sets U and V with edges only between sets) is a set of edges with no shared endpoints.  Maximum bipartite matching is solvable in polynomial time: reduce to max-flow with unit capacities, or use the specialized Hopcroft-Karp algorithm at O(E√V) (1973).  For weighted bipartite matching — find a perfect matching minimizing or maximizing total edge weight — the Hungarian algorithm (Kuhn 1955, Munkres 1957) runs in O(V³).  König's theorem (1931) provides the deep structural result: minimum vertex cover equals maximum matching in bipartite graphs.  In Rust, \`pathfinding::matrix::kuhn_munkres\` and \`pathfinding::matrix::kuhn_munkres_min\` solve the assignment problem; \`pathfinding\` also offers unweighted bipartite matching utilities.`,
-    citation: 'Hopcroft, J. E., Karp, R. M. (1973). *An n^5/2 Algorithm for Maximum Matchings in Bipartite Graphs.* SIAM Journal on Computing 2(4): 225–231.  Kuhn, H. W. (1955). *The Hungarian Method for the Assignment Problem.* Naval Research Logistics 2.',
+    title: 'Matching two sides',
+    tldr: 'Pairing up applicants with jobs, drivers with deliveries, tutors with students — when there are two distinct sides, this is solved and fast.',
+    gesture: 'Two-sided matching is a settled category.  Buy the algorithm.  Do not let your team build it.',
+    body: `Matching problems with two distinct sides are completely solved.  Pairing job applicants with positions, drivers with deliveries, students with mentors, ads with slots — all bipartite matching.  Two questions arise: maximum matching (pair as many as possible) and assignment (find the pairing with the lowest total cost).  Both are polynomial.  Hopcroft-Karp handles unweighted matching at scale.  The Hungarian algorithm — also called Kuhn-Munkres — handles cost-minimizing assignment.  Rust's pathfinding library implements both as one-line calls and handles tens of thousands of items in milliseconds.  When the problem has more than two sides — for example, matching student to mentor to time slot all together — it becomes the three-dimensional matching problem and is genuinely hard (NP-complete, see page 38).  Two sides cheap, three sides expensive.`,
+    citation: 'Hopcroft, J., Karp, R. (1973) for maximum matching.  Kuhn, H. (1955) for assignment.  König, D. (1931) for the structural foundation.',
     link: 'https://docs.rs/pathfinding/latest/pathfinding/kuhn_munkres/index.html',
-    eli5: `A bipartite graph has two sides.  Imagine candidates on the left and jobs on the right, with an edge between a candidate and a job whenever the candidate is qualified for it.  You want to pair up as many candidates with jobs as possible, no candidate to more than one job, no job to more than one candidate.
+    eli5: `Two-sided matching shows up in business constantly.  Applicants to jobs, customers to support reps, drivers to deliveries, tutors to students, ads to ad slots, organs to recipients, surgeons to operating rooms.  Every one of these is the same problem in different vocabulary.
 
-This is bipartite matching, and it is in P.  The first proof was constructive: model the bipartite graph as a flow network with a super-source connected to all left vertices, all right vertices connected to a super-sink, all edges with capacity one.  Max-flow on this network equals max-matching, and any of the polynomial flow algorithms solves it.
+The structure is: two sets, with potential pairings between them, and some criterion to optimize.  When the criterion is "maximum number of pairings," the problem is bipartite matching and is solved by Hopcroft-Karp's 1973 algorithm.  When the criterion is "lowest total cost," it is the assignment problem and is solved by the Hungarian algorithm, also known as Kuhn-Munkres, from 1955.  Both are polynomial.  Both handle tens of thousands of items in milliseconds on a laptop.  Both are one function call in Rust's pathfinding library.
 
-Hopcroft and Karp in 1973 noticed that flow on a unit-capacity bipartite graph admits a faster specialized algorithm.  Their method finds multiple shortest augmenting paths per round via BFS, runs O(√V) rounds, and totals O(E√V).  For dense bipartite graphs with thousands of vertices on each side, this is much faster than generic flow.
+The fact that these are solved is not always obvious to product teams.  Engineering tickets that read "build matching system" routinely turn into multi-week projects when an unfamiliar team tries to design the algorithm from scratch.  The right ticket is "wire up Kuhn-Munkres for our assignment problem."  Days, not weeks.
 
-The weighted version — every edge has a cost, you want a perfect matching minimizing total cost — is the assignment problem.  Solved by the Hungarian algorithm in O(V³).  The classical applications are personnel assignment, machine-job scheduling, transportation problems.
+The trap is dimension.  Two-sided matching is in the cheap category.  Three-sided matching — match three things together at once, like student to mentor to time slot — is NP-complete.  The problem looks innocent ("just one more dimension") and it is not.  When the requirement involves a triple constraint, the matching category changes and the engineering estimate triples.
 
-König's theorem connects matching to vertex cover.  In a bipartite graph, the minimum number of vertices needed to cover every edge equals the maximum matching size.  This is a structural fact unique to bipartite graphs — for general graphs vertex cover is NP-complete (page 27) but matching is still in P (page 14).  The bipartite structure changes the class.
+A workaround for three-sided problems: solve them sequentially.  Match students to mentors first (two-sided, cheap), then match mentor-student pairs to time slots (two-sided again, cheap).  The result is not provably optimal in the three-sided sense, but it is often good enough and stays in the affordable category.
 
-In Rust, \`pathfinding::kuhn_munkres::kuhn_munkres\` and \`kuhn_munkres_min\` solve the assignment problem given a cost matrix.  For unweighted maximum matching, model as flow with \`petgraph\` or hand-roll Hopcroft-Karp — it is about a hundred lines.
-
-Bipartite matching is in P.  Three-dimensional matching is NP-complete.  Two sides P, three sides NP-complete.  See page 38.`
+When you see "matching" in a requirement, the first question is how many sides.  Two — cheap.  Three or more — buy a solver or accept an approximation.`
   },
   {
-    title: 'General matching — Edmonds blossom',
-    tldr: 'Maximum matching in any graph, not just bipartite, in polynomial time.  Edmonds 1965 is the surprise.',
-    gesture: 'The "wait, that\'s in P?" result.  Edmonds 1965 shows odd cycles do not push matching out of P.',
-    body: `Jack Edmonds proved in 1965 that maximum matching in a general graph — not just bipartite — is solvable in polynomial time.  The blossom algorithm runs in O(V³) and the Micali-Vazirani 1980 refinement reaches O(E√V).  The key idea is the blossom: an odd-length cycle reachable by an alternating path.  Bipartite-style augmenting-path search fails on odd cycles, but Edmonds showed that contracting each blossom into a single vertex preserves the matching's maximum and lets the augmenting-path search continue.  When the search finishes, blossoms are expanded back to recover the matching.  The result was historically important — Edmonds's paper introduced the notion of "polynomial time" as the dividing line between tractable and intractable.  In Rust, \`petgraph::algo::matching::maximum_matching\` implements the blossom algorithm.`,
-    citation: 'Edmonds, J. (1965). *Paths, Trees, and Flowers.* Canadian Journal of Mathematics 17: 449–467.  Micali, S., Vazirani, V. V. (1980). *An O(√|V|·|E|) Algorithm for Finding Maximum Matching in General Graphs.* FOCS.',
+    title: 'Matching with no clean sides',
+    tldr: 'When the matching has no natural left/right split — roommate assignment, peer-to-peer pairing — there is still a polynomial algorithm.  It is just harder.',
+    gesture: 'Matching without a clean two-sided structure is still in the cheap category.  Surprising, and worth knowing.',
+    body: `Some matching problems have no natural two-sided structure.  Assigning roommates to share spaces, pairing players in a tournament, matching peer-to-peer transactions — every participant could potentially match with every other.  These look harder than two-sided matching and historically were thought to be.  Jack Edmonds in 1965 proved otherwise — general matching is still polynomial, just with more complex machinery.  The blossom algorithm handles odd-length cycles in the matching graph that break simpler approaches.  Rust's petgraph implements maximum matching for general graphs.  When you see a matching problem and your first instinct is "this is just like the two-sided case but more flexible," that instinct is right — and the algorithm is in the library.  Three-dimensional and higher-dimensional matching remain hard; only the no-clean-sides two-dimensional case is in the cheap category.`,
+    citation: 'Edmonds, J. (1965) *Paths, Trees, and Flowers* — also the paper that defined "polynomial time" as the working definition of "efficient."',
     link: 'https://docs.rs/petgraph/latest/petgraph/algo/matching/fn.maximum_matching.html',
-    eli5: `Bipartite matching is easy in retrospect.  Two sides, no odd cycles, augmenting paths just work.  General-graph matching looked harder for decades, because the moment a graph contains an odd cycle, augmenting-path search can fail in a specific way.
+    eli5: `Matching without a clean two-sided structure shows up in business more than you would expect.  University roommate assignment.  Tournament bracket generation.  Peer-to-peer payment netting.  Carpool group formation.  In each case, every participant could potentially pair with every other, and the question is to find the maximum number of pairings.
 
-The pathological pattern is an odd cycle reached by an alternating path — alternating between matched and unmatched edges.  Edmonds called this a blossom.  Inside the blossom, you can reach the same vertex through either two paths of different parities, so the usual "is this vertex already on the path?" check breaks the search.
+Until 1965, this was thought to be genuinely hard.  The standard two-sided matching algorithm fails on these problems because odd-length cycles in the matching graph create configurations where the simple greedy search gets stuck.  Jack Edmonds at the US National Bureau of Standards in 1965 proved that the problem is still polynomial — you just need a more clever search.  His algorithm contracts odd cycles into super-nodes, runs the standard search on the contracted graph, then expands the cycles back.  The result was a major surprise to the field at the time.
 
-Edmonds's contribution was twofold.  First, he found the right operation: contract the blossom into a single super-vertex.  Now augmenting-path search proceeds on the contracted graph.  When an augmenting path is found, expand blossoms back along the path to recover the actual augmentation in the original graph.  Second — and this is the part that mattered for the field — he wrote his 1965 paper as an argument for polynomial time itself as the right definition of "efficient."  Before Edmonds, "efficient" was informal.  After him, it meant P.
+Edmonds's paper did something more than solve the matching problem.  It introduced the modern definition of "efficient computation" as polynomial time.  Before 1965, "efficient" was an informal term.  After Edmonds, the formal definition stuck and the field reorganized around it.
 
-The blossom algorithm runs in O(V·E·α(V)) or O(V³) depending on the variant.  Micali-Vazirani 1980 brought it down to O(E√V), matching Hopcroft-Karp's bound for bipartite matching.  Both are practical.
+For business planning, the relevant fact is that one-pool matching (anyone to anyone) is still in the cheap category.  Rust's petgraph implements maximum_matching for general graphs.  The estimate for a roommate-assignment feature, a peer-pairing system, or a tournament-bracket generator is a few days, not a few weeks.
 
-The reason general matching matters operationally is that real graphs are rarely bipartite.  Roommate assignment is general matching.  Stable roommates (a different problem — see Irving 1985) is general matching with preferences.  Maximum matching in general graphs sits in P alongside bipartite matching, just with more machinery.
+The dimension warning from page 13 still applies.  Two-dimensional matching, even without sides, is cheap.  Three-dimensional matching (any-to-any-to-any) is NP-complete and requires the solver-or-SaaS treatment.
 
-The contrast that teaches the lesson: general-graph matching is in P, but general-graph three-dimensional matching is NP-complete.  Two-dimensional structure with odd cycles is still P; three-dimensional structure is not.  See page 38.
-
-In Rust, \`petgraph::algo::matching::maximum_matching\` runs the blossom algorithm on any UnGraph.  Pass the graph; receive the matching as a set of edge pairs.  Production-ready.
-
-Odd cycles do not push you out of P.  They just push you into harder data structures.`
+The shape of the data matters more than the labels on the sides.  Two-way matching of any kind — even without sides — is solved.`
   },
   {
-    title: '2-SAT — boolean satisfiability with two literals per clause',
-    tldr: 'Linear time via strongly connected components.  The width of the clauses changes the class.',
-    gesture: '2-SAT in P, 3-SAT NP-complete — one literal per clause separates the two classes.',
-    body: `A 2-CNF Boolean formula is a conjunction of clauses each containing exactly two literals.  Determining satisfiability of a 2-CNF formula is solvable in linear time, despite being a restriction of SAT.  Aspvall, Plass, and Tarjan published the algorithm in 1979.  Build an implication graph: for each clause (a ∨ b) add edges (¬a → b) and (¬b → a).  Compute strongly connected components (Tarjan's algorithm, linear time).  The formula is unsatisfiable iff some variable and its negation lie in the same SCC.  Otherwise, a satisfying assignment is recovered from the topological order of components.  In Rust, build the implication graph with \`petgraph\` and call \`petgraph::algo::tarjan_scc\`.  The cleanest application: scheduling with two-choice constraints.`,
-    citation: 'Aspvall, B., Plass, M. F., Tarjan, R. E. (1979). *A Linear-Time Algorithm for Testing the Truth of Certain Quantified Boolean Formulas.* Information Processing Letters 8(3): 121–123.',
+    title: 'Either-or constraints',
+    tldr: 'When every rule in the system is "if A then B" — exactly two-piece constraints — there is a linear-time check whether the rules are satisfiable.',
+    gesture: 'Two-piece logical constraints are in the cheap category.  Three-piece are not.  The boundary is sharp.',
+    body: `Some constraint problems have the shape "for each rule, exactly one of two things must hold" — staff assignments where each shift has two possible covers, layout problems where each item must be in one of two positions, configuration problems with binary either-or rules.  These problems can be checked for feasibility in linear time by translating each rule into a logical implication and analyzing the resulting graph.  This is the 2-SAT problem and it is in the cheap category.  When the constraints have three or more pieces — for each rule, exactly one of three things must hold — the problem becomes 3-SAT and is NP-complete.  The line between two and three is the most famous complexity boundary in computer science.  When you see two-piece rules everywhere, you are in the cheap category and a 2-SAT model with the petgraph library handles it.`,
+    citation: 'Aspvall, B., Plass, M., Tarjan, R. (1979) *A Linear-Time Algorithm for Testing the Truth of Certain Quantified Boolean Formulas.*',
     link: 'https://en.wikipedia.org/wiki/2-satisfiability',
-    eli5: `Boolean satisfiability — given a logical formula, can it be made true? — is the canonical NP-complete problem.  Cook proved it in 1971.  3-SAT, the restriction to three literals per clause, is also NP-complete.  Naively you would expect 2-SAT to be just as hard, only with a tighter restriction.  It is not.  2-SAT is in P.  Linear time.
+    eli5: `The two-piece-versus-three-piece distinction in logical constraints is one of the most useful boundaries in computer science.  When every constraint in a system involves exactly two variables, the system can be checked for satisfiability in linear time.  When some constraint involves three variables, the system is NP-complete.  The boundary is at width two, and crossing it is a cliff, not a slope.
 
-The reason is structural.  A 2-clause (a ∨ b) is equivalent to two implications: ¬a → b and ¬b → a.  Build a directed graph with one node per literal (variables and their negations), and one edge per implication.  The formula is unsatisfiable exactly when some variable x and its negation ¬x are forced into the same strongly connected component — because then the formula requires both x and ¬x to be true.
+Business cases that fit the two-piece structure are more common than they sound.  Scheduling where every shift must be covered by one of two named employees.  Layout where every component must go in one of two slots.  Permission systems where every role must include or exclude a specific capability.  Configuration where every choice forces another choice.  In each case, the constraint takes the form "if A then B" — and a system of these constraints can be modeled as a graph and analyzed in linear time.
 
-Strongly connected components are computable in linear time by Tarjan's algorithm (1972) or Kosaraju's algorithm.  Walk the SCCs once.  Check that no variable and its negation share a component.  If they do, unsatisfiable.  If they don't, recover an assignment by topological order over the SCCs — assign true to each variable whose negation's SCC comes before its own.
+The technique is to build a graph where each variable and its negation are nodes, and each constraint becomes a pair of implication edges.  Running a standard graph-analysis algorithm (strongly connected components) on this graph determines whether a valid assignment exists, and if so, constructs one.  The whole thing is about fifty lines of code on top of Rust's petgraph library.
 
-The transition from 2-SAT to 3-SAT is dramatic.  Two literals per clause gives implications, and implications give a graph, and graphs are in P.  Three literals per clause does not — a 3-clause has eight possible implications but they are non-deterministic, and no analogous structural collapse is known.  Three is the boundary.
+The cliff at three constraints is dramatic.  3-SAT is the canonical NP-complete problem.  No polynomial-time algorithm is known.  Industrial SAT solvers (page 23) can solve very large instances in practice through clever heuristics, but the worst case is exponential.
 
-In Rust, the build is direct.  Use \`petgraph::Graph\` for the implication structure, call \`petgraph::algo::tarjan_scc\`, then check the partition.  The whole thing is fewer than fifty lines.
+The teaching for planning: when a constraint system can be expressed entirely with two-variable rules, it is in the cheap category and a graph-based check answers it in linear time.  When some rules genuinely require three variables (or more), the problem becomes a SAT problem and you reach for a solver.  The check on which side you are on is simple — look at the constraints and count the variables in each one.
 
-When you spot a problem that decomposes into "for each constraint, exactly one of two things must hold," try modeling it as 2-SAT.  You may be in P and not realize it.  See page 38 for the 2-SAT vs 3-SAT line.`
+Two is cheap.  Three is expensive.  No middle ground.`
   },
   {
-    title: 'Topological sort and DAG dynamic programming',
-    tldr: 'Linear time on a DAG.  Open the door to single-source longest path, counting paths, and reachability.',
-    gesture: 'When the graph is a DAG, everything is in P — topological order is the key that unlocks the DP.',
-    body: `A topological ordering of a directed acyclic graph is a linear order of its vertices such that every edge points from earlier to later in the order.  Kahn's algorithm (1962) constructs one in O(V + E) by repeatedly removing source vertices with no incoming edges.  DFS-based topological sort uses finishing-time order and is equally fast.  A directed graph has a topological order iff it is acyclic.  Once you have the order, dynamic programming on the DAG runs in linear time: longest path, shortest path with negative edges, number of distinct paths from source to sink, single-source shortest path even with negative weights — all solvable by one pass over vertices in topological order.  In Rust, \`petgraph::algo::toposort\` returns the ordering or an error if a cycle exists.`,
-    citation: 'Kahn, A. B. (1962). *Topological Sorting of Large Networks.* Communications of the ACM 5(11): 558–562.',
+    title: 'Dependency order — when the graph has no cycles',
+    tldr: 'When the data has no circular dependencies — build graphs, prerequisite chains, version histories — many problems collapse into one linear pass.',
+    gesture: 'No cycles, no problem.  DAG-shaped data unlocks an enormous toolbox of fast algorithms.',
+    body: `Directed acyclic graphs (DAGs) are the data shape of build systems, prerequisite chains, version histories, computation pipelines, and most workflow systems.  The defining property is "no cycles" — you can list the items in an order where every dependency comes before what depends on it.  Computing that order is linear time (topological sort).  And once you have it, an enormous range of problems that are hard on general graphs become trivial: longest paths, shortest paths with negative costs, counting completions, computing expected costs.  All linear passes over the topological order.  Rust's petgraph has topological sort as one call.  When your problem lives on a DAG, you are in the cheap category and your team should ship the feature in days.`,
+    citation: 'Kahn, A. (1962) *Topological Sorting of Large Networks.*',
     link: 'https://docs.rs/petgraph/latest/petgraph/algo/fn.toposort.html',
-    eli5: `A directed acyclic graph — DAG — is a directed graph with no cycles.  Many real things are DAGs: build dependency graphs, course prerequisites, task scheduling with precedence constraints, computation graphs, expression trees, version histories that respect time.
+    eli5: `A directed acyclic graph — or DAG — is a flow of dependencies with no circles.  Build systems are DAGs.  Course prerequisites are DAGs.  Software dependency graphs are DAGs.  Workflow engines, data pipelines, computation graphs in machine learning, version control histories — all DAGs.
 
-The defining property of a DAG is the existence of a topological order.  A topological order is a linear arrangement of the vertices such that every edge points forward.  Computing one is linear: repeatedly find a vertex with no incoming edges, output it, remove it and its outgoing edges.  Kahn's algorithm formalizes this.  DFS gives the same answer via reverse finishing times.
+The structural property that makes DAGs cheap is the topological order.  Because there are no cycles, you can list every item in a sequence such that all of its dependencies appear earlier in the sequence.  Computing this ordering takes time proportional to the size of the graph.
 
-The reason topological order matters is that it unlocks dynamic programming on the graph.  Many problems on general graphs are hard — longest path is NP-complete in general — but on DAGs they collapse to a linear pass.  To compute the longest path ending at each vertex, process vertices in topological order and set dp[v] = 1 + max over incoming edges of dp[u].  Same shape for shortest path with negative edges (no negative cycles can exist in a DAG), number of paths, expected reward in a stochastic DAG, and many others.
+The reason this matters for planning is that an enormous number of business problems are easy on DAGs and hard on general graphs.  The longest-path problem on a general graph is NP-complete.  On a DAG it is linear.  The shortest-path problem with negative edges takes the slower Bellman-Ford algorithm on general graphs.  On a DAG it is one pass.  Counting the number of completions of a workflow, computing the expected duration of a project, finding the critical path through a Gantt chart — all linear on DAGs.
 
-The class flip from general graphs to DAGs is the same flip you see in the dividing-line pairs (page 38): adding or removing one structural constraint changes the algorithmic problem completely.  Cycles are the hard part.  Acyclicity removes them.
+The estimating discipline: when a problem involves dependencies, ask whether the dependencies could ever form a cycle.  If the answer is no — and it usually is, for build systems, prerequisite chains, and workflows — the problem is on a DAG and is cheap.  If the answer is yes, you are on a general graph and the toolbox shrinks.
 
-In Rust, \`petgraph::algo::toposort\` returns a Vec of NodeIndex in topological order, or an \`Error::Cycle\` if no order exists.  Pair it with a manual DP loop over the returned order to solve almost any DAG-restricted question.
+In Rust, petgraph's toposort function returns the ordering or an error if a cycle exists.  Combined with a hand-written loop over the order, your team can solve almost any DAG question in a day.  The work is in defining the graph correctly; the algorithm is free.
 
-If your problem lives on a DAG, you are in P.  If you can prove the natural graph is a DAG, you can stop looking for harder tools.`
+Many production systems have hidden DAG structure that is not exploited.  When a feature request looks expensive, check whether the underlying data is acyclic.  Often it is, and the work moves from a quarter to a sprint.`
   },
   {
-    title: 'String matching',
-    tldr: 'KMP, Boyer-Moore, Aho-Corasick.  Rust has aho-corasick, regex, memchr, bstr — pick the fit.',
-    gesture: 'Finding a pattern in a text is linear in the text length — and Rust has crates for every variant.',
-    body: `Single-pattern string matching is solvable in O(n + m) time on a text of length n with a pattern of length m using the Knuth-Morris-Pratt algorithm (1977).  Boyer-Moore (1977) is sublinear in many practical cases.  Multiple-pattern matching uses the Aho-Corasick automaton (1975), which finds occurrences of any of k patterns in O(n + Σmᵢ + matches).  Regular expression matching with backreferences is NP-hard; without backreferences it is in P via NFA simulation, O(nm).  In Rust, the canonical crates are \`aho-corasick\` for multi-pattern, \`regex\` for regular expressions, \`memchr\` for byte-level scans, and \`bstr\` for byte-string operations.  The standard library's \`str::find\` and \`str::contains\` use SIMD when the pattern is short enough.`,
-    citation: 'Knuth, D. E., Morris, J. H., Pratt, V. R. (1977). *Fast Pattern Matching in Strings.* SIAM Journal on Computing 6(2): 323–350.  Aho, A. V., Corasick, M. J. (1975). *Efficient String Matching: An Aid to Bibliographic Search.* Communications of the ACM 18(6).',
+    title: 'Searching for text patterns',
+    tldr: 'Finding a needle in a haystack of text is solved.  Rust has industrial-grade libraries that scan gigabytes per second.',
+    gesture: 'Pattern matching in text is a solved category.  Reach for the library; the library is faster than anything your team will write.',
+    body: `Searching for patterns in text — substrings, regular expressions, dictionaries of keywords — is one of the most engineered problems in computing.  Industrial implementations scan gigabytes of text per second on a single CPU core.  The libraries handle every edge case — Unicode, multi-pattern, anchored, case-insensitive, with SIMD acceleration.  Rust's aho-corasick library handles multi-pattern matching (finding any of thousands of keywords in a body of text).  Rust's regex library handles regular expressions and is the fastest in widespread use.  Rust's memchr library handles single-byte and short-pattern scanning with SIMD.  Your team should never write their own pattern matcher.  The only flavor that is genuinely hard is regular expressions with backreferences (PCRE-style) — those can be made to run exponentially slow.  Rust's regex library deliberately excludes them.`,
+    citation: 'Knuth, Morris, Pratt (1977).  Aho, Corasick (1975).  These algorithms are over forty years old and the library implementations have been refined ever since.',
     link: 'https://docs.rs/aho-corasick/latest/aho_corasick/',
-    eli5: `Finding a substring in a text is so common that most people never stop to ask its complexity.  The naive method — slide the pattern across the text, compare each position — is O(nm).  Linear-time algorithms cut this to O(n + m) by avoiding redundant comparisons.
+    eli5: `Pattern matching in text is one of those problems where the libraries are so far ahead of what an in-house team will produce that there is no business case to write your own.  Modern implementations of substring search, regex matching, and multi-pattern keyword scanning run at gigabytes per second on a single core, with hand-tuned SIMD assembly for the inner loop.
 
-KMP precomputes, for each position in the pattern, the length of the longest proper prefix that is also a suffix.  When a mismatch occurs at pattern position j, the algorithm shifts the pattern by j minus that prefix-suffix length, never re-examining text characters.  The result is linear in the text length, regardless of how bad the pattern is.
+The standard library or the regex library handles the basics.  When you need multi-pattern matching — looking for any of thousands of keywords in a body of text, as in spam filtering, content moderation, or intrusion detection — the Aho-Corasick algorithm is the right tool, and Rust's aho-corasick library is industrial-grade.  When you need single-pattern search at maximum speed, memchr exploits SIMD instructions to scan a hundred bytes per cycle.
 
-Boyer-Moore goes the other direction.  It scans the pattern right-to-left and uses two heuristics — bad-character and good-suffix — to skip large stretches of text on a mismatch.  Worst case is the same as KMP but practical performance on natural text is often O(n/m), strictly sublinear.  Most production grep implementations use a Boyer-Moore variant.
+The one trap to know about: regular expressions with backreferences.  PCRE-style regular expressions (the kind in Perl, PHP, JavaScript) allow patterns to refer back to previously matched substrings, which lets you express things like "the same word twice in a row."  Patterns with backreferences are NP-hard in the worst case, and a malicious input can cause them to run exponentially slow.  This is the source of regex-based denial-of-service attacks.
 
-Aho-Corasick generalizes KMP to multiple patterns.  Build a trie of patterns, add failure links between nodes (like KMP's prefix function but on the trie), and walk the trie while scanning the text.  Every occurrence of any pattern is reported in one pass.  This is the right tool for keyword scanning, dictionary matching, virus signatures.
+Rust's regex library deliberately omits backreferences.  This is a feature, not a bug.  Every pattern is guaranteed to match in time proportional to the input length.  If your team's existing regex usage requires backreferences, the right path is to model the requirement differently — usually parse the text first, then check the structural property — rather than to use a different regex engine.
 
-In Rust, \`aho-corasick\` is the production answer for multi-pattern.  \`regex\` is the standard regular-expression engine, NFA-based, linear in text length when the regex avoids backreferences.  \`memchr\` does byte-level search with SIMD acceleration.  \`bstr\` extends it to byte-string operations.
+For business planning, pattern matching is one of the very few "you should never build your own" categories.  The libraries are mature, fast, well-maintained, and free.  Tickets that involve searching text should be sized in hours, not days.
 
-Regular expression matching with backreferences (PCRE-style) is NP-hard.  Most Rust regex crates deliberately exclude backreferences for this reason.  When you see a regex flavor that supports them and your input is adversarial, you can construct an input that takes exponential time.  Use Rust's \`regex\` and stay in P.
-
-String matching is in P.  Use the crates.`
+When the requirement looks bigger than that, the work is somewhere else — in defining what to search for, in scaling to many documents, in serving results — not in the pattern matcher itself.`
   },
   {
-    title: 'Edit distance and sequence alignment',
-    tldr: 'Wagner-Fischer DP, O(nm).  strsim has it, plus Jaro-Winkler and Damerau-Levenshtein.',
-    gesture: 'How many edits separate two strings — and the DP that answers in polynomial time.',
-    body: `The Levenshtein edit distance between two strings is the minimum number of single-character insertions, deletions, or substitutions to transform one into the other.  Vladimir Levenshtein defined the metric in 1965; Wagner and Fischer published the O(nm) dynamic programming algorithm in 1974.  The DP fills an (n+1)×(m+1) table where entry (i,j) is the edit distance between the first i characters of one string and the first j of the other.  Space is reducible to O(min(n,m)) by keeping only the previous row.  Variants — Damerau-Levenshtein (adds transposition), Hamming (substitution only, equal lengths), longest common subsequence — all share the same DP shape.  In Rust, \`strsim\` exposes \`levenshtein\`, \`damerau_levenshtein\`, \`jaro\`, \`jaro_winkler\`, and others.`,
-    citation: 'Wagner, R. A., Fischer, M. J. (1974). *The String-to-String Correction Problem.* JACM 21(1): 168–173.  Levenshtein, V. I. (1965). *Binary Codes Capable of Correcting Deletions, Insertions, and Reversals.* Doklady Akademii Nauk.',
+    title: 'How different are these two strings',
+    tldr: 'Edit distance — how many character changes between two strings — is solved by a single dynamic programming pass.  Spell check, diff, DNA alignment all use it.',
+    gesture: 'Spell check, diff tools, DNA matching, fuzzy search — all the same algorithm, all polynomial.',
+    body: `The edit distance between two strings is the number of character insertions, deletions, or substitutions to transform one into the other.  It is the standard measure of string similarity and the foundation of spell checkers, diff tools, fuzzy search, plagiarism detection, and DNA sequence alignment.  The algorithm is a textbook dynamic programming routine that runs in time proportional to the product of the two string lengths.  Rust's strsim library implements Levenshtein distance, Damerau-Levenshtein (adds transposition), Jaro-Winkler (weights early matches more), and several other common variants as one-line calls.  For very long sequences (DNA), the work scales as a square of the length and becomes expensive — specialized libraries with diagonal-band optimization handle it.  For short strings (names, addresses, search queries), the work is microseconds and your team should reach for the library.`,
+    citation: 'Wagner, R., Fischer, M. (1974) *The String-to-String Correction Problem.*  Levenshtein, V. (1965).',
     link: 'https://docs.rs/strsim/latest/strsim/',
-    eli5: `Edit distance is the standard measure of how similar two strings are.  Spell checkers use it to find candidate corrections.  Bioinformatics tools use it (or its weighted cousin, sequence alignment) to compare DNA and protein sequences.  Diff tools use it to find minimal change sets between file versions.
+    eli5: `Edit distance is the most useful string-similarity metric in business software.  Spell checkers use it to find the most likely correction for a typo.  Diff tools use it to find the minimal change set between two file versions.  Fuzzy search uses it to match queries to records when the user does not type the exact spelling.  Address normalization uses it to detect that "123 Main Street" and "123 Main St" are the same address.  Bioinformatics uses it (with custom scoring) to align DNA sequences.
 
-The algorithm is the cleanest dynamic programming example in the textbook.  Fill a table of size (n+1) by (m+1).  Cell (0, j) is j and cell (i, 0) is i — that many insertions or deletions to align an empty prefix with j or i characters.  Cell (i, j) is the minimum of three candidates: (i−1, j) + 1 for a deletion, (i, j−1) + 1 for an insertion, (i−1, j−1) + (0 if characters match else 1) for a substitution or match.  The bottom-right corner is the answer.
+The algorithm is one of the cleanest examples of dynamic programming.  You fill in a table where each cell represents the edit distance between prefixes of the two strings, building up from the empty prefix.  The table fills in linear time per cell, so the total work is the product of the two string lengths.  For two strings of a hundred characters each, this is ten thousand operations — microseconds.  For two strings of a million characters each, it is a trillion operations and becomes a research problem.
 
-The same DP shape solves many problems.  Longest common subsequence drops the substitution case.  Sequence alignment with custom substitution scores (BLAST, Smith-Waterman, Needleman-Wunsch) replaces the +1 with a scoring matrix.  Damerau-Levenshtein adds a fourth case for adjacent-character transposition.  Approximate string matching with bounded edits exploits the diagonal structure.
+For short strings — names, addresses, query terms, ticket titles — the work is so cheap that you should compute distances on demand.  Rust's strsim library handles the standard variants in a one-line call.  Levenshtein for basic edit distance.  Damerau-Levenshtein for typos that involve swapping adjacent characters (a common kind of error).  Jaro-Winkler for cases where matching the beginning of a string matters more (good for name matching).
 
-The space bound matters.  The full (n+1) × (m+1) table is fine for short strings but blows up at scale.  Because each cell depends only on the row above and the cell to the left, you can store only the previous row and overwrite — O(min(n, m)) space.  Recovering the actual edit script requires the full table or Hirschberg's divide-and-conquer trick.
+The variants matter because the right metric depends on the kind of error you are catching.  Jaro-Winkler is the standard in record linkage and customer-database deduplication.  Levenshtein is the right choice for spell checking.  Damerau-Levenshtein for keyboard typos.  Hamming distance (no insertions or deletions) for fixed-length codes.
 
-In Rust, the \`strsim\` crate exposes a clean API for the standard metrics.  When you need scoring matrices, the \`bio\` crate provides sequence alignment routines.  For approximate string matching at scale, \`triple_accel\` uses SIMD and bit-parallel tricks.
+The teaching for planning: any feature that involves "how similar are these two strings" is a library call away.  When the requirement is more elaborate — matching across millions of records, with fuzzy joins and blocking — the work is in the data plumbing, not the similarity computation.
 
-Edit distance is in P with O(nm) DP.  The longest common subsequence has a celebrated lower bound of essentially the same — no truly subquadratic algorithm is known, and recent fine-grained complexity results suggest one cannot exist without breaking the Strong Exponential Time Hypothesis.
-
-P is not always linear.  Quadratic is in P.  Decide accordingly.`
+The similarity computation is solved.  Reach for it and move on.`
   },
   {
-    title: 'Linear programming',
-    tldr: 'Khachiyan 1979 proved LP is in P.  In Rust, good_lp with the highs backend is the production answer.',
-    gesture: 'Continuous optimization with linear constraints is in P.  Add the integer requirement and you fall into NP-complete.',
-    body: `Linear programming optimizes a linear objective over a polyhedron defined by linear inequality and equality constraints.  Dantzig published the simplex method in 1947 — exponential in the worst case but excellent in practice.  Leonid Khachiyan proved in 1979 that LP is in P via the ellipsoid algorithm; Narendra Karmarkar's 1984 interior-point method gave a practical polynomial-time alternative.  Modern solvers (HiGHS, Gurobi, CPLEX) use simplex and barrier methods together.  In Rust, \`good_lp\` is the canonical modeling crate, offering a problem-construction DSL on top of swappable backends including \`highs\`, \`microlp\`, \`coin_cbc\`, and \`scip\`.  LP relaxations of NP-complete integer problems often give strong bounds and feasible-region intuition even when the integer problem itself is intractable.`,
-    citation: 'Dantzig, G. B. (1947). *The Simplex Method.* RAND.  Khachiyan, L. G. (1979). *A Polynomial Algorithm in Linear Programming.* Doklady Akademii Nauk SSSR.  Karmarkar, N. (1984). *A New Polynomial-Time Algorithm for Linear Programming.* Combinatorica 4.',
+    title: 'Optimization with continuous numbers',
+    tldr: 'When the variables can be any real number — money, quantity, percentage — and the constraints are linear, the problem is solved at industrial scale.',
+    gesture: 'Real-valued optimization with linear constraints is in the cheap category — even at millions of variables.  Buy or open-source the solver.',
+    body: `Linear programming covers an enormous fraction of business optimization.  Variables are continuous (money, hours, units of inventory).  Constraints and objective are linear (budget caps, capacity limits, sum-to-one).  Modern solvers — HiGHS (open source), Gurobi, CPLEX — handle millions of variables in seconds.  Diet planning, blending problems, transportation problems, scheduling relaxations, network flow at scale, portfolio allocation, blending ad targeting — all linear programs.  Rust's good_lp library lets your team model the problem in code (define variables, add constraints, set objective) and dispatch to a backend solver.  HiGHS is the recommended open-source backend.  When some variables must be integer (page 32), the problem moves to the expensive category.  When the variables are continuous, the work is industrial and your team should not be writing their own solver.`,
+    citation: 'Dantzig, G. (1947) simplex.  Khachiyan, L. (1979) ellipsoid (proved LP is polynomial).  Karmarkar, N. (1984) interior-point.',
     link: 'https://docs.rs/good_lp/latest/good_lp/',
-    eli5: `Linear programming is the workhorse of operations research.  The model is simple: pick values for a set of real variables, subject to linear inequality constraints, to maximize or minimize a linear objective.  Diet planning, blending problems, transportation problems, network flow LP duals, machine scheduling relaxations — an enormous fraction of practical optimization fits this shape.
+    eli5: `Linear programming is the workhorse of operations research.  An enormous fraction of business optimization problems can be modeled as: pick values for a set of real-valued variables, subject to linear inequality constraints, to maximize or minimize a linear objective.  Diet planning.  Production blending.  Transportation costs.  Portfolio allocation.  Network flow.  Advertising auctions.  Workforce scheduling relaxations.
 
-For decades the standard algorithm was Dantzig's simplex method.  It walks the vertices of the feasible polyhedron, moving from one to an adjacent one with better objective value, until no better neighbor exists.  In the worst case (Klee-Minty 1972 constructed an n-cube example) simplex takes exponentially many steps.  In practice on random and real instances it is nearly always polynomial.
+The modeling discipline is to write the problem in three pieces: variables (what can vary), constraints (what limits the variables), and objective (what to maximize or minimize).  Once it is in that form, the solver does the rest.  Modern solvers like HiGHS handle problems with millions of variables and constraints in seconds.
 
-Khachiyan's ellipsoid algorithm in 1979 was the first proof that LP is in P at all.  It is too slow for practical use but mathematically essential — it showed the class.  Karmarkar's 1984 interior-point method gave a practical polynomial-time alternative and triggered a revolution in optimization.  Modern solvers fold simplex and interior-point together, switching between them based on instance shape.
+The history is instructive.  George Dantzig invented the simplex method in 1947 for the US Air Force, who needed to plan logistics.  Simplex is exponential in the worst case but almost always fast in practice.  In 1979, Khachiyan proved that linear programming is genuinely in the cheap category — there is a polynomial-time algorithm.  In 1984, Karmarkar found a practical polynomial-time alternative (interior-point), which kicked off a revolution.  Modern solvers combine simplex and interior-point methods.
 
-In Rust, \`good_lp\` is the right starting point.  It models the LP in code — define variables, add constraints with operator overloading, set the objective — and dispatches to a backend solver.  HiGHS is the recommended open-source backend; it is fast, well-maintained, and supports both LP and MIP.  For embedded use, \`microlp\` is a pure-Rust simplex implementation.
+In Rust, the good_lp library is the standard.  Your team declares variables, adds constraints with operator overloading, sets the objective, and calls solve.  The library dispatches to a backend.  HiGHS is the recommended open-source backend; commercial backends (Gurobi, CPLEX) handle larger problems faster but cost real money.
 
-LP shows up as a building block far beyond pure optimization.  LP duality is the language of certificates.  LP relaxations of NP-complete integer programs (page 32) give bounds on the optimal.  Total unimodularity of the constraint matrix is a sufficient condition for the LP optimum to be integer — this is why bipartite matching and shortest path can be modeled as LP and still be in P.
+The boundary to remember: linear programming with continuous variables is in the cheap category.  Linear programming with integer variables (page 32) is NP-complete and expensive.  The continuous-versus-integer distinction is one of the most consequential complexity boundaries in applied mathematics.
 
-Linear programming is the boundary the rest of the book is mapped against.  Continuous variables stay in P.  Integer variables push you into NP-complete.  See page 38.`
+When your problem has linear constraints and continuous variables, you have a solved problem and should reach for a solver.  When it has integer variables, the work changes — see page 32.`
   },
   {
-    title: 'Convex optimization',
-    tldr: 'Minimize a convex function over a convex set — interior-point methods, polynomial time.  Clarabel is the Rust solver.',
-    gesture: 'Convexity is the structural property that keeps optimization in P.',
-    body: `Convex optimization minimizes a convex objective function over a convex feasible set.  The defining property: any local minimum is a global minimum.  Linear programming is the simplest case; quadratic programming, second-order cone programming, and semidefinite programming extend the model.  Interior-point methods solve all of these in polynomial time given a self-concordant barrier function — Yurii Nesterov and Arkadi Nemirovski systematized the theory in 1994.  Stephen Boyd and Lieven Vandenberghe's 2004 textbook is the canonical reference.  In Rust, \`clarabel\` is a native conic interior-point solver supporting LP, QP, SOCP, SDP, and exponential and power cones.  \`argmin\` provides first-order methods (gradient descent, BFGS, Newton).  Convex problems show up in machine learning, signal processing, control, finance — everywhere a "best" answer must exist and be findable.`,
-    citation: 'Boyd, S., Vandenberghe, L. (2004). *Convex Optimization.* Cambridge University Press.  Nesterov, Y., Nemirovski, A. (1994). *Interior-Point Polynomial Algorithms in Convex Programming.* SIAM.',
+    title: 'Optimization with curves instead of lines',
+    tldr: 'When the objective is curved (cost of risk grows faster than linearly) and the feasible set is well-behaved, the problem is still in the cheap category.',
+    gesture: 'Convex optimization is the broadest class of optimization that stays in the cheap category.  Most machine learning training fits here.',
+    body: `Convex optimization extends linear programming with curved objectives, as long as the curve goes the right way.  "Convex" means the objective looks like a bowl — every local minimum is the global minimum.  This structure makes the problem solvable in polynomial time, even when the objective is not linear.  Most regularized statistical models (ridge regression, lasso, support vector machines, logistic regression) are convex.  Portfolio optimization with risk penalties is convex.  Many control problems are convex.  Rust's clarabel library is a production-grade convex solver.  When the problem is convex, the engineering estimate is days.  When the problem is non-convex (most deep learning training), the toolkit changes to heuristics with no global guarantees.  Knowing whether your objective is convex changes the engineering plan.`,
+    citation: 'Boyd, S., Vandenberghe, L. (2004) *Convex Optimization* — the textbook reference.',
     link: 'https://oxfordcontrol.github.io/ClarabelDocs/',
-    eli5: `Convex optimization is the broadest class of optimization problems that is reliably in P.  The key word is convex.  A set is convex if the line segment between any two of its points stays inside the set.  A function is convex if it lies below every chord — the line segment between two points on its graph never dips below the function.  Convex optimization minimizes a convex function over a convex set.
+    eli5: `Convex optimization is the broadest class of optimization that is still in the cheap category.  Linear programming is the simplest convex case.  Quadratic, second-order-cone, and semidefinite programming are progressively more expressive but stay in the convex world.
 
-The structural fact that makes convex problems tractable is the absence of bad local minima.  In a convex problem, any local minimum is global.  Gradient descent and its variants cannot get stuck in a basin that is not the answer.  Newton's method, when applicable, converges quadratically.  Interior-point methods walk through the interior of the feasible set toward the optimum and provably terminate in polynomial iterations.
+The key property is that the objective is shaped like a bowl — there is one bottom, and any local minimum is the global minimum.  This property removes the search problem.  Standard iterative algorithms (interior-point methods, projected gradient, Newton's method) converge reliably to the answer.  No hyperparameter tuning, no restart strategies, no luck required.
 
-The hierarchy goes: LP (linear) ⊂ QP (linear constraints, quadratic objective) ⊂ SOCP (second-order cone) ⊂ SDP (semidefinite).  Each step adds expressiveness while staying in the convex world and staying in P.  Robust portfolio optimization sits in SOCP.  Sensor-network localization sits in SDP.  Logistic regression's loss is convex.  Support vector machines are QP.  Many regularized estimators in statistics and ML are convex.
+Most regularized statistical models are convex.  Ridge regression, lasso, support vector machines, logistic regression — all convex optimization with a one-line solver call in any decent library.  Portfolio optimization with mean-variance trade-offs is convex.  Many control problems (LQR, MPC) are convex.
 
-In Rust, \`clarabel\` is the production convex solver — interior-point, handles cones beyond LP/QP/SOCP, well-documented, BSD-licensed.  \`good_lp\` covers LP and MIP.  \`argmin\` is the right home for first-order methods (gradient descent, L-BFGS, Newton, conjugate gradient).  For specific convex problems with structure — proximal methods, ADMM, mirror descent — \`argmin\` has the primitives.
+The boundary that matters: when the problem is convex, the engineering estimate is days to a week.  When the problem is non-convex — most deep learning training, most genuinely hard optimization — the toolkit shifts to heuristics (stochastic gradient descent, simulated annealing, evolutionary search) with no global guarantees and substantial engineering effort.
 
-When a problem is not convex, the world becomes harder very quickly.  Local minima multiply.  Initialization matters.  Heuristics enter.  Most of deep learning training is non-convex optimization with stochastic gradients and engineering luck.
+In Rust, the clarabel library is the production-grade convex solver.  It handles linear, quadratic, and conic problems, all in polynomial time.  For pure gradient-based optimization on more general (possibly non-convex) problems, the argmin crate provides a framework for gradient descent, L-BFGS, Newton, and several derivative-free methods.
 
-If your problem is convex, you are in P and you should reach for a solver.  If it is not, the toolkit changes.  Page 36 covers metaheuristics for the non-convex case.
+The questions to ask when sizing an optimization feature: is the objective convex?  Are the constraints linear or convex?  If both, the work is cheap and a solver does the job.  If not, you are in heuristic territory and the estimate triples.
 
-Convexity is the property.  Solvers do the rest.`
+Convexity is the structural property that buys you tractability.  Confirm it before sizing the work.`
   },
   {
-    title: 'Primality testing',
-    tldr: 'Miller-Rabin is fast and probabilistic.  AKS proved primality is in P.  num-prime has both.',
-    gesture: 'Is this number prime?  AKS 2002 proved the answer is in P.  Practically, you reach for Miller-Rabin.',
-    body: `Determining whether an integer is prime is in P.  Manindra Agrawal, Neeraj Kayal, and Nitin Saxena proved it in 2002 with the AKS algorithm, deterministic polynomial time in the number of digits.  Practical primality testing uses Miller-Rabin (1976, 1980) — a probabilistic test that declares a composite "probably prime" with arbitrarily small error rate after enough rounds.  For numbers below 2⁶⁴, deterministic Miller-Rabin with a fixed small set of bases is known to be correct.  Baillie-PSW combines Miller-Rabin with a Lucas test and has no known counterexamples up to 2⁶⁴.  In Rust, \`num-prime\` exposes \`is_prime\` (Baillie-PSW) and \`is_prime_probabilistic\`, along with factorization and prime generation.  Primality testing is in P, but factoring — the basis of RSA — is conjectured not to be.`,
-    citation: 'Agrawal, M., Kayal, N., Saxena, N. (2004). *PRIMES is in P.* Annals of Mathematics 160(2): 781–793.  Miller, G. L. (1976). *Riemann\'s Hypothesis and Tests for Primality.* JCSS 13(3).  Rabin, M. O. (1980). *Probabilistic Algorithm for Testing Primality.* Journal of Number Theory 12.',
+    title: 'Is this number prime',
+    tldr: 'Testing whether a number is prime is solved.  Factoring large numbers is not — that asymmetry is the basis of every public-key cryptosystem.',
+    gesture: 'Primality testing is cheap.  Factoring is expensive.  Most of internet security rides on the gap between them.',
+    body: `Testing whether a number is prime is in the cheap category.  Both probabilistic methods (Miller-Rabin, extremely fast, vanishingly small error rate) and deterministic methods (the AKS algorithm, proved to be polynomial in 2002) exist.  Rust's num-prime library exposes both as one-line calls and handles arbitrary-precision integers.  Factoring a composite number into its prime factors is, in contrast, conjectured to be genuinely hard for large numbers.  This asymmetry — primality is easy, factoring is hard — is the basis of RSA encryption, which secures most of the internet.  The day a polynomial-time factoring algorithm is found is the day RSA dies and the entire payment and identity infrastructure needs to be replaced.  Quantum computers (Shor's algorithm) could in principle factor in polynomial time, but no quantum computer large enough exists yet.`,
+    citation: 'Agrawal, Kayal, Saxena (2002) *PRIMES is in P.*  Miller, G. (1976), Rabin, M. (1980) for the standard probabilistic test.',
     link: 'https://annals.math.princeton.edu/2004/160-2/p12',
-    eli5: `For most of the twentieth century, deciding whether an integer is prime was widely conjectured to be in P, but no proof existed.  Probabilistic tests like Miller-Rabin (1976, 1980) were known and fast.  In 2002, three researchers at IIT Kanpur — Manindra Agrawal and two of his students, Neeraj Kayal and Nitin Saxena — published a deterministic polynomial-time primality test.  The AKS algorithm runs in time polynomial in the number of digits of the input.
+    eli5: `The primality-versus-factoring asymmetry is one of the most consequential gaps in computing.  Testing whether a single number is prime — even a thousand-digit number — is fast.  Breaking a composite number into its prime factors is conjectured to be exponentially hard, and the entire public-key cryptography infrastructure of the internet rests on that conjecture.
 
-AKS is a landmark theoretical result.  It closed a decades-old open question.  In practice, AKS is slow relative to Miller-Rabin, so production code almost always uses Miller-Rabin or a variant.  Miller-Rabin picks a random base a, computes a^(n−1) mod n, and checks against the Fermat test plus a refinement involving square roots of one.  For each round with random base, a composite passes with probability at most 1/4.  After k rounds, the probability of falsely calling a composite prime is at most 4^(−k).  For 64 rounds, the error rate is below 2^(−128) — far smaller than the probability of cosmic-ray bit flips in your hardware.
+For primality testing, the practical algorithm is Miller-Rabin.  It picks a random "witness" and runs a quick check; if the witness fails the check, the number is composite; if it passes, the number is probably prime, with a failure rate of one in four per witness.  Running sixty witnesses gives a false-prime rate below cosmic-ray bit-flip rates.  Modern variants like Baillie-PSW have no known counterexamples up to 64-bit integers and are conjectured to be deterministic.
 
-For deterministic answers on 64-bit integers, you do not even need randomness — fixed sets of bases are known to determine primality exactly.  For larger numbers, Baillie-PSW (Miller-Rabin base 2 plus a Lucas test) has no known counterexamples and is conjectured to be deterministic.
+In 2002, three researchers in India proved that primality testing is genuinely in the cheap category — there exists a deterministic polynomial-time algorithm (AKS).  AKS is slower than Miller-Rabin in practice and rarely used, but the theoretical result closed a decades-old open question.
 
-In Rust, \`num-prime\` is the right crate.  Its \`is_prime\` runs Baillie-PSW.  Its \`is_prime_probabilistic\` runs Miller-Rabin with a configurable number of rounds.  For arbitrary-precision integers, \`num-bigint\` interops cleanly.
+For factoring, the situation is different.  No polynomial-time algorithm is known for factoring large composite numbers.  The best known classical algorithms are sub-exponential but still impractical for thousand-digit numbers.  This is the basis of RSA encryption: pick two large prime numbers, multiply them together, publish the product — anyone can verify the product is composite, no one can recover the factors.
 
-Primality is in P.  Factoring is not known to be — every public-key cryptosystem built on factoring assumes it is genuinely hard.  Primality and factoring are different questions.  Primality you do.  Factoring you avoid.
+The day this gap closes is the day the internet's payment and identity systems need to be rebuilt.  Two threats: classical algorithmic progress (none in fifty years) and quantum computers running Shor's algorithm (no machine large enough exists yet, but the threat is real enough that post-quantum cryptography is an active research area).
 
-The class boundary runs between them, not around them both.`
+For Rust, the num-prime library handles both primality testing and factoring.  Primality is fast.  Factoring is slow for the same reason that protects every encrypted transaction on the internet.
+
+Cheap to check.  Expensive to break.  That gap is the foundation.`
   },
   {
-    title: 'Linear algebra as an algorithmic hammer',
-    tldr: 'Matrix operations are in P.  PageRank, spectral graph methods, least squares — all reduce to linear algebra.',
-    gesture: 'Many P-class problems become trivial once you spot the matrix.',
-    body: `Matrix multiplication, matrix inverse, determinant, eigenvalues, and singular value decomposition are all computable in polynomial time.  Standard matrix multiplication is O(n³); Strassen (1969) is O(n^2.807); the current theoretical best is roughly O(n^2.37).  Solving Ax = b runs in O(n³) via LU decomposition.  Eigenvalues via QR iteration converge in practical polynomial time.  Many graph and combinatorial problems reduce to linear algebra: PageRank is the principal eigenvector of a Markov matrix (Page, Brin 1998).  Spectral clustering uses the eigenvectors of the graph Laplacian.  Counting spanning trees uses the Matrix-Tree theorem (Kirchhoff 1847).  Linear least squares is the normal equation solution.  In Rust, \`nalgebra\` and \`ndarray\` cover general linear algebra; \`faer\` is the high-performance dense linear algebra crate with parallel and SIMD-aware kernels.`,
-    citation: 'Page, L., Brin, S., Motwani, R., Winograd, T. (1998). *The PageRank Citation Ranking: Bringing Order to the Web.* Stanford Technical Report.  Strassen, V. (1969). *Gaussian Elimination is not Optimal.* Numerische Mathematik 13.',
+    title: 'When the answer is a matrix',
+    tldr: 'PageRank, recommendation systems, search ranking, image compression — all secretly matrix problems.  All solvable with off-the-shelf libraries.',
+    gesture: 'When the problem has a matrix at its heart, the answer is in the linear algebra library — and the work is cheap.',
+    body: `Many business problems that look combinatorial collapse into a matrix computation once the structure is spotted.  Google's PageRank ranks web pages as the principal eigenvector of a link-graph matrix.  Recommendation systems use matrix factorization to predict missing entries in a user-item matrix.  Search ranking, image compression (JPEG, SVD), principal component analysis, spectral clustering, network centrality — all matrix operations.  Linear algebra is in the cheap category.  Matrix multiplication, eigenvalue computation, matrix factorization all run in polynomial time, and Rust has multiple production-grade libraries — nalgebra for general use, faer for high-performance dense problems, ndarray for NumPy-like array operations.  When a problem can be expressed in matrix form, the engineering work is in the data preparation, not the computation.`,
+    citation: 'Page, L., Brin, S. (1998) *The PageRank Citation Ranking.*  One of the most cited papers in computing.',
     link: 'https://docs.rs/faer/latest/faer/',
-    eli5: `Linear algebra is the secret hammer.  Many problems that look combinatorial collapse to a matrix computation once you spot the structure.
+    eli5: `Linear algebra is the secret hammer for an enormous class of business problems that do not look like math problems at first glance.
 
-PageRank ranks web pages by the principal eigenvector of a stochastic matrix derived from the link graph.  The Page-Brin paper from 1998 is one of the most cited papers in computer science.  The algorithm is power iteration: multiply a vector by the matrix repeatedly until it stops changing direction.  Converges quickly.  No combinatorial search.  Just matrices.
+PageRank is the classic example.  Google's original ranking algorithm models the web as a giant graph where each page is a node and each link is an edge.  The "importance" of each page is defined as the principal eigenvector of a transition matrix derived from the link structure.  Computing eigenvectors of huge matrices is a well-studied problem in linear algebra with fast iterative algorithms (power iteration).  The famous PageRank paper from 1998 essentially says: pose the web ranking problem as a matrix problem, then use the linear algebra textbook.
 
-Spectral clustering uses the eigenvectors of the graph Laplacian to partition vertices into clusters with few edges between them.  The structural fact behind this is the Cheeger inequality, which bounds the conductance of the best graph cut by the second eigenvalue of the Laplacian.
+Recommendation systems use the same trick.  The user-item matrix records every interaction.  Predicting missing entries — what would this user rate this movie — is matrix completion, solvable by low-rank factorization (SVD, alternating least squares, neural collaborative filtering).  All matrix operations.
 
-The Matrix-Tree theorem of Kirchhoff (1847) says the number of spanning trees in a graph equals any cofactor of its Laplacian.  Computing a determinant is in P; counting spanning trees by enumeration is exponential.  Linear algebra collapses an apparently combinatorial count into a polynomial operation.
+Spectral clustering uses the eigenvectors of the graph Laplacian to find groups in a network with few edges between them.  Search ranking uses singular value decomposition to project queries and documents into a shared low-dimensional space.  Image compression — JPEG — uses the discrete cosine transform, another matrix operation.
 
-Least squares regression solves an overdetermined linear system by minimizing residuals — the normal equations or QR or SVD all give the same answer in polynomial time.  Principal component analysis is the SVD of a centered data matrix.  Recommender systems built on matrix factorization are constrained low-rank approximations.
+For business planning, the discipline is to ask: can I express this problem as a matrix?  If yes, the work is cheap — Rust has three production-grade linear algebra libraries (nalgebra for general use, faer for high performance on dense problems, ndarray for NumPy-like operations on multi-dimensional arrays).  The estimate is days.  If no, the work might still be tractable but the toolbox shrinks.
 
-In Rust, the linear algebra ecosystem has three main crates.  \`nalgebra\` is the general-purpose option, supports dense and sparse, fixed and dynamic sizes, well-documented.  \`ndarray\` mirrors NumPy's interface and is preferred when you want array semantics over linear algebra semantics.  \`faer\` is the high-performance option, especially for large dense problems — parallel kernels, SIMD-aware, competitive with LAPACK.
+The reason this matters is that recognizing the matrix is often the hardest part.  Once you see that a problem is "find the eigenvector," "factor the matrix," "solve the linear system," "compute the SVD," you have moved the work from research to engineering.  The libraries are decades old, fast, and well-maintained.
 
-The lesson is structural.  When a problem can be encoded as Ax = b, eigenvalues, or matrix factorization, you are in P with strong constants.  When you spot the matrix, stop looking for the combinatorial algorithm.
-
-Reach for the matrix.  The class follows.`
+Reach for the matrix.  The library does the rest.`
   },
 
-  // ────────────── Part III — NP-complete, with Rust ──────────────
+  // ────────── Part III — Problems that are genuinely hard ──────────
   {
-    title: 'SAT solvers and CDCL',
-    tldr: 'SAT is NP-complete but modern CDCL solvers tear through millions of variables.  splr and varisat are the Rust options.',
-    gesture: 'SAT is the canonical NP-complete problem — and yet a great solver answers most practical instances in milliseconds.',
-    body: `Boolean satisfiability — given a propositional formula, does there exist an assignment that makes it true — was proven NP-complete by Cook in 1971 and independently by Levin in 1973.  The Davis-Putnam-Logemann-Loveland (DPLL) algorithm of 1962 is the foundation of modern SAT solvers: backtracking search with unit propagation and pure-literal elimination.  Conflict-Driven Clause Learning (CDCL) — Marques-Silva's GRASP 1996, Bayardo-Schrag 1997, MoskewiczMadigan-Zhao-Zhang-Malik's Chaff 2001 — added learned clauses, watched literals, restart strategies, and branching heuristics like VSIDS.  Modern solvers handle millions of variables and clauses on practical instances.  In Rust, \`splr\` is a pure-Rust CDCL solver from a Japanese researcher; \`varisat\` is another pure-Rust implementation; \`cadical-sys\` wraps the C++ CaDiCaL solver via FFI.`,
-    citation: 'Marques-Silva, J. P., Sakallah, K. A. (1996). *GRASP—A New Search Algorithm for Satisfiability.* ICCAD.  Davis, M., Logemann, G., Loveland, D. (1962). *A Machine Program for Theorem Proving.* CACM 5(7).',
+    title: 'Boolean satisfiability — the original hard problem',
+    tldr: 'SAT is the canonical hard problem.  But modern industrial solvers crack million-variable instances in seconds.  Use one; do not write one.',
+    gesture: 'SAT is famously hard.  Industrial solvers are famously good.  The right move is to encode and dispatch.',
+    body: `Boolean satisfiability — does this logical formula have a true assignment — was the first problem proven NP-complete (Cook, 1971).  Every other NP-complete problem reduces to it.  By every theoretical measure, SAT is hard.  And yet modern industrial SAT solvers routinely handle instances with millions of variables in seconds.  The trick is conflict-driven clause learning (CDCL), a search strategy that learns from each dead-end and prunes the future search aggressively.  Modern SAT solvers are the product of three decades of competitive benchmarking and engineering refinement.  For business problems that can be encoded as logical constraints — scheduling, configuration, verification, planning — the right path is to encode in standard format (DIMACS) and call a solver.  Rust has splr (pure Rust) and varisat.  For maximum performance, the C++ solver CaDiCaL via FFI is hard to beat.`,
+    citation: 'Cook, S. (1971) proved SAT is NP-complete.  Marques-Silva (1996) introduced CDCL.',
     link: 'https://docs.rs/splr/latest/splr/',
-    eli5: `SAT is the original NP-complete problem.  Cook proved it in 1971.  Every other NP problem reduces to it.  By every theoretical measure, SAT is hard.
+    eli5: `SAT is the canonical hard problem.  Cook proved it NP-complete in 1971; every other NP-complete problem reduces to it.  By every theoretical measure it is genuinely hard.  And yet, decades of engineering have produced industrial SAT solvers that crack instances with millions of variables in seconds.  This contradiction — theoretically hard, practically tractable on real inputs — is one of the most important lessons in applied complexity.
 
-And yet a modern SAT solver routinely cracks instances with millions of variables and tens of millions of clauses in seconds.  How?
+The reason modern SAT solvers work is that real-world SAT instances almost always have hidden structure that adversarial worst-case instances do not.  Configuration constraints have local clustering.  Scheduling problems have weak coupling between distant variables.  Verification queries have natural decompositions.  The conflict-driven clause learning (CDCL) architecture of modern solvers exploits this structure by learning from every dead-end and pruning the search aggressively.
 
-The answer is that "NP-complete" is a worst-case statement.  Most practical SAT instances have hidden structure — community structure, low treewidth, easy backbones — and modern solvers exploit it.  The architecture they all share is Conflict-Driven Clause Learning.
+The first business implication: when a problem can be encoded as Boolean logic — configuration validation, planning under constraints, verification, model checking — the right move is to encode it as CNF (the standard SAT format) and hand it to a solver.  Do not write your own search.  Modern SAT solvers are the product of three decades of competitive benchmarking and tens of thousands of engineering hours.  You will not beat them in a quarter.
 
-The core of CDCL: when the search hits a conflict (a clause that cannot be satisfied under the current partial assignment), analyze the conflict to identify the smallest set of decisions that caused it.  Add a learned clause that forbids that set.  Backtrack to the deepest decision that the new clause is no longer unit on, and continue.  Over time, the solver builds up a large body of learned constraints that prune the search space dramatically.
+The second implication: even though SAT is "hard" in the worst case, the practical cost of using a SAT solver on real problems is often less than the cost of writing custom search code.  Reach for the solver, see if it works, only commit to a bespoke approach if it does not.
 
-Layered on top: VSIDS branching heuristics that prefer variables involved in recent conflicts; watched literals for fast unit propagation; restart strategies that periodically clear the stack but keep the learned clauses; preprocessing techniques like blocked-clause elimination and variable elimination; symmetry breaking.  Engineering matters.
+In Rust, splr is the pure-Rust CDCL solver.  Varisat is another option.  For maximum performance, the C++ solver CaDiCaL is the current state of the art and is callable from Rust via FFI.  All of them accept DIMACS-format input and return either a satisfying assignment or UNSAT.
 
-In Rust, \`splr\` is the pure-Rust solver, well-documented and embeddable.  \`varisat\` is another option.  For maximum performance, \`cadical-sys\` wraps the world-class C++ CaDiCaL solver.  All of them accept DIMACS format and return a model or UNSAT.
-
-The right way to use a SAT solver is not to write your own.  Encode your problem in CNF.  Hand it to splr.  Read the answer.  Modern solvers are decades of engineering effort; you will not beat them.
-
-NP-complete in theory.  Tractable in practice.  Page 38 explains when this trick fails.`
+The teaching: "NP-complete in theory" and "tractable in practice with the right solver" are both true for SAT.  Plan around both.`
   },
   {
-    title: '3-SAT and the reduction from SAT',
-    tldr: 'SAT reduces to 3-SAT by splitting wide clauses with auxiliary variables.  Both NP-complete.',
-    gesture: 'The reduction that anchors most other NP-completeness proofs starts here.',
-    body: `3-SAT is SAT restricted to clauses of exactly three literals.  Cook's 1971 proof showed SAT is NP-complete; the standard reduction from SAT to 3-SAT — split each k-clause (k > 3) into k−2 three-clauses connected by auxiliary variables — gives a polynomial reduction, so 3-SAT is also NP-complete.  3-SAT is the launchpad for most other NP-completeness proofs in Karp's 1972 paper and beyond, because its uniform structure makes it the easiest target to reduce to other graph and combinatorial problems.  Algorithmically, all the CDCL machinery from generic SAT applies — modern solvers do not distinguish 2-SAT, 3-SAT, and k-SAT, they parse CNF and run.  The class boundary is at width 2: 2-SAT is in P (page 15), 3-SAT is NP-complete.`,
-    citation: 'Cook, S. A. (1971). *The Complexity of Theorem-Proving Procedures.* STOC.  Karp, R. M. (1972). *Reducibility Among Combinatorial Problems.*',
+    title: 'Why three variables per rule changes everything',
+    tldr: 'Two-variable constraints are cheap.  Three-variable constraints are NP-complete.  The same SAT solver handles both — but the cost picture changes.',
+    gesture: 'The boundary between cheap and hard constraint problems is at three variables per rule.  Knowing this saves the wrong estimate.',
+    body: `When every rule in a logical constraint system involves exactly two variables, the system can be checked for satisfiability in linear time using a graph-based technique (page 15).  When some rule involves three or more variables, the problem becomes 3-SAT and is NP-complete — the same complexity class as every other hard problem.  The transition from two to three is the sharpest complexity boundary in computer science.  In practice, modern SAT solvers handle both flavors with the same machinery and often the same speed on real inputs — but the worst-case picture is dramatically different.  For planning purposes, the question to ask is whether the constraints genuinely require three or more variables per rule.  If they do, accept that the problem is in the expensive category and budget for a solver.  If they do not, model it as 2-SAT and stay in the cheap category.`,
+    citation: 'Karp, R. (1972) proved 3-SAT NP-complete by reduction from SAT.',
     link: 'https://en.wikipedia.org/wiki/Boolean_satisfiability_problem#3-satisfiability',
-    eli5: `3-SAT is SAT with every clause having exactly three literals.  It is the canonical NP-complete problem you reduce other problems to.  Once you have a 3-SAT formula, the structure is so uniform that reductions to graph problems, scheduling problems, packing problems become tractable to write down.
+    eli5: `The two-versus-three boundary in logical constraints is the most studied and most useful complexity boundary in computer science.  When every constraint involves exactly two variables, the problem is in the cheap category and solvable in linear time by a graph-based method.  When constraints involve three or more variables, the problem is NP-complete.
 
-The reduction from arbitrary SAT to 3-SAT is constructive and short.  A 1-clause (x) becomes (x ∨ y ∨ z) ∧ (x ∨ y ∨ ¬z) ∧ (x ∨ ¬y ∨ z) ∧ (x ∨ ¬y ∨ ¬z) — four 3-clauses with fresh variables y, z that force x to be true.  A 2-clause (x ∨ y) becomes (x ∨ y ∨ z) ∧ (x ∨ y ∨ ¬z).  A k-clause for k > 3 (x₁ ∨ ... ∨ xₖ) becomes a chain of k−2 three-clauses linked by k−3 auxiliary variables: (x₁ ∨ x₂ ∨ a₁) ∧ (¬a₁ ∨ x₃ ∨ a₂) ∧ ... ∧ (¬a_{k−3} ∨ x_{k−1} ∨ xₖ).  The construction preserves satisfiability and runs in linear time.
+The transition is genuinely a cliff, not a slope.  No clever encoding makes a three-variable constraint problem secretly two-variable.  The boundary has been studied for fifty years and never been crossed.
 
-This reduction is doing more work than it looks.  By giving every NP-complete proof a uniform target, it cuts the surface area of subsequent reductions.  Karp's 1972 paper reduced 3-SAT (not full SAT) to twenty other problems — clique, vertex cover, set cover, Hamiltonian cycle, knapsack, 3-coloring, and so on — and the reductions are short precisely because 3-SAT clauses are tiny.
+In practice, this matters most at the planning stage.  When a product manager describes a constraint system in plain language, the key question is whether each rule could be stated as "if X then Y" — exactly two pieces — or whether each rule fundamentally requires three or more variables to express.
 
-The class boundary is sharp.  2-SAT (page 15) is in P because 2-clauses are implications, implications form a graph, and the graph's SCC structure determines satisfiability in linear time.  3-SAT has no such structural collapse.  No polynomial-time algorithm for 3-SAT is known, and the consensus is that none exists.
+If two variables per rule are enough, the problem is 2-SAT and your team should ship the feature in a week using a graph library (page 15).
 
-In Rust, 3-SAT is the same as SAT operationally — encode in DIMACS CNF, hand to \`splr\` or \`varisat\`.  The width restriction is a theoretical convenience, not a solver feature.
+If three or more are required, the problem is at least 3-SAT and lives in the expensive category.  The right move is to encode it as CNF and dispatch to an industrial SAT solver (page 23).  The solver might handle it in seconds on real instances despite the worst-case theoretical hardness, but the engineering effort is the encoding, not the search.
 
-3-SAT is the launchpad for the rest of NP-complete.  Know the reduction.  See page 38 for why 2 is in P and 3 is not.`
+The same SAT solvers handle both 2-SAT and 3-SAT through the same machinery — they do not specialize based on clause width.  This means the modeling decision is entirely about how you express the constraints, not which tool you call.
+
+In planning meetings, watch for constraints that try to relate three things at once: "the project lead must be in the same office as the project location and must speak the local language."  That is a three-variable constraint and pushes the problem into the expensive category.  If the requirement can be split into two two-variable constraints — "lead and location must be in the same office" and "lead must speak the local language" — you stay cheap.
+
+Three variables is the cliff.  Watch for it in requirements.`
   },
   {
-    title: 'Traveling Salesman Problem',
-    tldr: 'Decision version NP-complete.  Held-Karp DP O(n²2ⁿ).  Christofides 1.5-approx for metric TSP.',
-    gesture: 'The poster problem of NP-completeness — and the workshop where every NP-complete trick was first sharpened.',
-    body: `Given a set of cities and pairwise distances, the traveling salesman problem asks for the shortest tour visiting every city exactly once and returning to the start.  The decision version (is there a tour of length at most k?) was on Karp's 1972 list of NP-complete problems.  Held and Karp's 1962 dynamic programming algorithm solves it exactly in O(n²·2ⁿ) — fine for n up to roughly 20.  For metric TSP (distances satisfy the triangle inequality), Christofides' 1976 algorithm achieves a 3/2 approximation; Karlin, Klein, and Oveis Gharan improved this to 3/2 − ε in 2020.  Euclidean TSP admits a PTAS (Arora 1996).  In Rust, the practical approach is to model as ILP with \`good_lp\`, or use a specialized crate like \`tsp-rs\` for heuristics (nearest-neighbor, 2-opt, Lin-Kernighan).`,
-    citation: 'Held, M., Karp, R. M. (1962). *A Dynamic Programming Approach to Sequencing Problems.* JSIAM 10(1).  Christofides, N. (1976). *Worst-case Analysis of a New Heuristic for the Travelling Salesman Problem.* CMU TR.',
+    title: 'Traveling Salesman — the poster problem',
+    tldr: 'Visit every location once and return — the famous hard problem.  Exact answers for small N, approximations for medium, SaaS for production.',
+    gesture: 'The most famous NP-complete problem in the world.  Real solvers are mature; build them yourself only if you have a reason.',
+    body: `The Traveling Salesman Problem (TSP) asks for the shortest tour visiting every location once.  It is the most famous NP-complete problem and the workhorse of vehicle routing, circuit board drilling, DNA sequencing, and many other domains.  For small instances (up to about twenty locations), exact algorithms (Held-Karp 1962) find the optimal answer in seconds.  For metric TSP (distances satisfy the triangle inequality), Christofides' 1976 algorithm produces a solution within 50% of optimal in polynomial time.  In practice, the heuristic Lin-Kernighan and its descendants (the LKH solver) get within a fraction of a percent of optimal on instances with thousands of cities.  The state-of-the-art commercial solver Concorde has cracked exact-optimal tours on instances with tens of thousands of cities.  For business use, the right move is almost always to call an existing solver or use a SaaS (Vroom, OptaPlanner) rather than build from scratch.`,
+    citation: 'Held, M., Karp, R. (1962) for exact DP.  Christofides, N. (1976) for the 3/2 approximation.',
     link: 'https://en.wikipedia.org/wiki/Travelling_salesman_problem',
-    eli5: `TSP is the most famous NP-complete problem in the world.  Every undergraduate textbook uses it as the running example.  The reasons are good ones: the problem is easy to state, has direct industrial applications (vehicle routing, circuit board drilling, DNA sequencing), and admits a remarkable variety of attack methods.
+    eli5: `The Traveling Salesman Problem is so famous that it has its own jokes, t-shirts, and a Wikipedia article that opens with a Pulitzer Prize-winning novel about a TSP-obsessed character.  It is the most studied NP-complete problem in history.  The reason for the attention is that it has a clean statement, real industrial applications (vehicle routing, circuit board drilling, DNA sequencing, microscopy), and a remarkable diversity of attack methods.
 
-The Held-Karp dynamic program from 1962 solves it exactly.  The state is a pair (S, v) where S is a subset of cities and v is the most recently visited.  The value is the length of the shortest path starting from city 1, visiting exactly the cities in S, and ending at v.  Fill the table in order of |S|.  The final answer is min over v of dp[all cities, v] + dist(v, 1).  Time: O(n² · 2ⁿ).  Space: O(n · 2ⁿ).  For n = 20, this is roughly 20 million entries — workable on a laptop.
+For your business, the relevant fact is that TSP is well-tooled.  Decades of research have produced solvers that handle realistic problem sizes far beyond what naive analysis would suggest.
 
-For larger n, exact methods rely on integer programming.  The standard formulation has binary variables x_{ij} for "edge ij in tour," with degree constraints and subtour elimination constraints.  Subtour elimination is exponential in the number of constraints; cutting-plane methods add them lazily.  Concorde, the state-of-the-art TSP solver, has solved instances with tens of thousands of cities to optimality.
+For small instances — up to about twenty stops — the Held-Karp dynamic programming algorithm from 1962 finds the optimal answer in seconds on a laptop.  Beyond twenty, the work doubles with each added stop and becomes infeasible past about thirty.
 
-For approximate solutions on metric TSP, Christofides' 1976 algorithm builds a minimum spanning tree, finds a perfect matching on the odd-degree vertices of the MST, combines them into an Eulerian multigraph, walks the Euler tour, and shortcuts to get a Hamiltonian tour.  The result is at most 1.5 times optimal.  Karlin-Klein-Oveis Gharan's 2020 randomized improvement is the first to break 1.5 in fifty years.
+For medium and large instances, exact methods using integer programming with cutting planes (Concorde is the state-of-the-art) routinely solve problems with thousands of cities to optimality.  These solvers are available, though Concorde itself requires academic licensing for non-research use.
 
-For heuristic solutions, 2-opt and Lin-Kernighan are the workhorses.  2-opt repeatedly swaps pairs of edges if it shortens the tour.  Lin-Kernighan generalizes to k-edge swaps and is the basis of the LKH solver, the best heuristic in practice.
+For real-time use cases — vehicle routing at delivery scale — the right move is almost always heuristic.  Lin-Kernighan and its descendants produce tours within a fraction of a percent of optimal on instances with tens of thousands of cities.  The LKH solver is the production heuristic.  For multi-vehicle problems with capacity and time-window constraints, open-source SaaS solvers like Vroom and OR-Tools handle realistic operational problems.
 
-In Rust, model with \`good_lp\` for exact small instances; use heuristic libraries for large practical instances.  Or skip Rust and call out to LKH or Concorde when problem size demands it.
+For business planning: TSP is in the expensive category but the tooling is mature.  Engineering effort goes into modeling the problem (what counts as a stop, what counts as a constraint, what counts as a cost) and choosing the right solver, not into writing search algorithms.  When a routing problem appears on the roadmap, the procurement question dominates the engineering question.
 
-TSP is the workshop.  Every NP-complete trick was sharpened here.`
+The problem is hard.  The tools are good.  Use the tools.`
   },
   {
-    title: '0/1 Knapsack',
-    tldr: 'NP-complete in the strong sense?  No — weakly NP-complete.  Pseudo-polynomial DP O(nW) is the standard exact method.',
-    gesture: 'Knapsack is NP-complete, but it has a polynomial-time algorithm in the value of the capacity.',
-    body: `The 0/1 knapsack problem: given items with weights and values and a capacity W, choose a subset of items with total weight at most W maximizing total value.  Karp 1972 placed it on the NP-complete list.  But it is only weakly NP-complete: the dynamic programming algorithm with state (item, current weight) runs in O(nW) time, which is polynomial in n and W but exponential in the bit-length of W.  This pseudo-polynomial time makes knapsack tractable whenever W is small relative to n.  Knapsack also admits a fully polynomial-time approximation scheme (FPTAS) — for any ε > 0, a (1−ε)-approximation in time polynomial in n and 1/ε.  In Rust, hand-roll the DP for exact answers, or use \`good_lp\` to model as a 0-1 ILP and dispatch to HiGHS or CBC.`,
-    citation: 'Karp, R. M. (1972). *Reducibility Among Combinatorial Problems.*  Bellman, R. (1957). *Dynamic Programming.* Princeton University Press.',
+    title: 'Knapsack — which items fit in the budget',
+    tldr: 'Picking the best subset of items within a budget is technically NP-complete but practically tractable — solvable by dynamic programming when budgets are reasonable.',
+    gesture: 'Knapsack is NP-complete but practically cheap when the numbers are small.  One of the friendliest hard problems.',
+    body: `The 0/1 knapsack problem: given items each with weight and value and a budget, pick the subset that maximizes value without exceeding budget.  Engineering portfolio selection, ad slot allocation, feature shipping under engineering budget, asset selection for a fund — all knapsack.  Classified as NP-complete (Karp 1972), but with a critical practical caveat: the dynamic programming solution runs in time proportional to the number of items times the budget value.  When the budget is small (hundreds or thousands), this is microseconds.  When the budget is cryptographically large, the same algorithm is infeasible.  This is called "weakly NP-complete" — hard in the worst case but tractable for typical business inputs.  Knapsack also has a fully polynomial-time approximation scheme: a tunable knob trading speed for closeness to optimal.  In Rust, hand-roll the DP for exact answers or use good_lp for the integer programming formulation.`,
+    citation: 'Karp, R. (1972).  Bellman, R. (1957) for the DP.',
     link: 'https://en.wikipedia.org/wiki/Knapsack_problem',
-    eli5: `0/1 knapsack is the cleanest example of a weakly NP-complete problem.  It is on Karp's NP-complete list, so it is genuinely hard in the bit-complexity sense.  But it has a dynamic programming algorithm that runs in O(nW) time — polynomial in n (the number of items) and W (the capacity in arbitrary units), but exponential in the number of bits needed to write W.
+    eli5: `Knapsack is one of the friendliest NP-complete problems.  Technically it is in the expensive category, but in practice it is almost always tractable for business use.
 
-The DP fills a table of size n × W.  Entry dp[i][w] is the maximum value attainable using only the first i items with total weight at most w.  The recurrence: dp[i][w] = max(dp[i−1][w], dp[i−1][w−wᵢ] + vᵢ) if wᵢ ≤ w else dp[i−1][w].  Fill in order; the answer is dp[n][W].  Recover the chosen items by back-tracing.
+The problem: you have items, each with a weight (cost, time, capacity used) and a value.  You have a budget (total cost, total time, total capacity).  Pick the subset of items that maximizes total value without exceeding the budget.  This shape shows up everywhere in business — engineering portfolio selection (which features to ship under a fixed engineering budget), advertising slot allocation, fund construction, server packing, freight loading.
 
-The reason this is not a polynomial-time algorithm for knapsack is that the input size is the number of bits, not the magnitude.  Doubling W only adds one bit to the input but doubles the work.  For pathological instances with W = 2^n, the DP is exponential.  For typical instances with W bounded by a polynomial in n, the DP is polynomial.
+The dynamic programming solution from 1957 fills a table where each cell represents "the maximum value achievable using only the first i items, with budget at most j."  The work is proportional to the product of items and budget.  For a typical business problem with a hundred items and a budget in the thousands, this is microseconds.  The optimal answer comes back in negligible time.
 
-Knapsack also admits a fully polynomial-time approximation scheme.  Scale the values down so the maximum is polynomial in n/ε, run the DP on scaled values, scale back.  The result is within (1−ε) of optimal in time O(n³ / ε).  This makes knapsack one of the friendliest NP-complete problems in practice.
+The catch is that "budget" here means the numeric value, not the bit-length of the value.  If the budget is one billion (typical for financial portfolios in dollars), the work is a hundred items times one billion — too slow.  This is the technical sense in which knapsack is NP-complete: when the budget is cryptographically large, the DP becomes infeasible.
 
-In Rust, the DP is twenty lines.  For modeling, \`good_lp\` lets you describe the 0-1 ILP and dispatch to a solver — overkill for knapsack alone but the right pattern when knapsack is one constraint in a larger optimization.
+For most business uses, the budget is small enough that the DP works.  When it does not, the fallback is to model the problem as an integer linear program and call HiGHS via Rust's good_lp library.  This handles much larger problems in seconds.
 
-The pair to remember: 0/1 knapsack is NP-complete, but pseudo-polynomial.  Fractional knapsack — items can be split — is in P via a single greedy sort.  The dividing line is the integer restriction.  See page 38.`
+Knapsack also has one of the best approximation algorithms in the field — a "fully polynomial-time approximation scheme" (FPTAS).  You set a quality knob (95% of optimal? 99%?) and the algorithm produces a solution at that quality in time polynomial in both items and the inverse of the quality gap.  This is the gold standard of approximability.
+
+For planning: knapsack is "expensive in theory but cheap in practice" for typical business inputs.  Engineering estimate is a few days for an in-house implementation or a few hours to wire up good_lp.
+
+When the budget is huge, the problem really is expensive.  When the budget is reasonable, the problem is solved.  Read the numbers before sizing the work.`
   },
   {
-    title: 'Vertex cover, independent set, clique',
-    tldr: 'Three NP-complete problems that are the same coin viewed from three angles.  All Karp 1972.',
-    gesture: 'Three sides of the same NP-complete coin — and the simplest reductions to remember.',
-    body: `A vertex cover is a set of vertices such that every edge has at least one endpoint in the set.  An independent set is a set of vertices with no edges between them.  A clique is a set of vertices with every pair connected.  All three decision problems are NP-complete (Karp 1972).  The reductions among them are immediate: S is an independent set iff V \\ S is a vertex cover; S is a clique in G iff S is an independent set in the complement of G.  Solving any one in polynomial time would solve all three.  Vertex cover has a 2-approximation by greedy edge picking; independent set is APX-hard with no constant-factor approximation possible unless P = NP.  In Rust, model as ILP via \`good_lp\` for exact solutions, or hand-roll branch-and-bound on the vertex-cover side where the fixed-parameter algorithm is O(2^k · n) in the cover size k.`,
-    citation: 'Karp, R. M. (1972). *Reducibility Among Combinatorial Problems.*  Håstad, J. (1996). *Clique is hard to approximate within n^{1−ε}.* FOCS.',
+    title: 'Picking the right subset under constraints',
+    tldr: 'Choosing a minimum (or maximum) subset that meets some structural requirement is the cluster of vertex cover, independent set, and clique — all NP-complete and all secretly the same problem.',
+    gesture: 'Three of the most-cited NP-complete problems are actually the same coin viewed from three angles.',
+    body: `Three classic NP-complete problems show up in business in slightly different forms.  Vertex cover: pick the minimum-size set of items that "touches" every relation.  Independent set: pick the maximum-size set with no relations among them.  Clique: pick the maximum-size set where every pair is related.  All three are equivalent — solving one solves the others.  Use cases include minimum-staff coverage (vertex cover), fraud-ring detection (clique), conflict-free scheduling (independent set), security policy auditing (vertex cover).  All NP-complete.  Vertex cover has a fast 2-approximation (greedy edge picking) and is one of the friendliest hard problems when the optimal cover is small (a parameterized algorithm runs in time exponential only in the cover size).  Independent set and clique are much harder to approximate.  In Rust, model as integer programming via good_lp for exact answers on moderate instances.`,
+    citation: 'Karp, R. (1972) put all three on the original NP-complete list.',
     link: 'https://en.wikipedia.org/wiki/Vertex_cover',
-    eli5: `Three problems.  Three statements.  All NP-complete.  All the same problem.
+    eli5: `Vertex cover, independent set, and clique are three NP-complete problems that look different but are the same problem in disguise.  Each one is a way of picking the right subset of items from a network of relationships.
 
-Vertex cover: pick a minimum-size set of vertices that touches every edge.  Independent set: pick a maximum-size set of vertices with no edges among them.  Clique: pick a maximum-size set of vertices all mutually adjacent.
+Vertex cover: pick the smallest set of items such that every relationship has at least one of its endpoints in the set.  Business use: minimum-staff coverage (cover every shift with the fewest people), security policy auditing (cover every required permission with the fewest roles), influencer marketing (reach every community with the fewest seeders).
 
-The reductions are mechanical.  A set S is an independent set if and only if its complement V \\ S is a vertex cover — if no edge has both endpoints in S, then every edge has at least one endpoint outside S.  A set S is a clique in graph G if and only if S is an independent set in the complement graph (the graph with the same vertices and an edge wherever G does not).  So a fast algorithm for any one yields fast algorithms for the others.
+Independent set: pick the largest set of items with no relationships among them.  Business use: conflict-free scheduling (the maximum set of jobs that can run simultaneously without competing for the same resource), team formation (the largest group of people with no interpersonal conflicts).
 
-The approximation landscape is different even though the exact-complexity landscape is identical.  Vertex cover has a simple 2-approximation: repeatedly pick an uncovered edge and add both endpoints to the cover.  This is at most twice optimal because every optimal cover must include at least one endpoint of every such edge.  By contrast, independent set is APX-hard — Håstad's 1996 result says no polynomial-time algorithm can approximate it within n^{1−ε} for any ε > 0 unless P = NP.  Clique inherits the same hardness.  Same problem, very different approximability.
+Clique: pick the largest set of items all mutually related.  Business use: fraud-ring detection (the largest group of accounts all transacting with each other), tightly-knit community discovery, sales territory consolidation.
 
-Vertex cover is also one of the cleanest fixed-parameter tractable problems.  Parameterized by the cover size k, an O(1.27^k · n) algorithm exists.  When the cover is small, exact solutions are fast even for large graphs.
+All three are equivalent — a fast algorithm for any one solves all three.  Vertex cover and independent set are complements (a set is independent if and only if everything else is a vertex cover).  Clique becomes independent set when you flip the graph (replace every edge with non-edge and vice versa).  None of them has a known fast algorithm.
 
-In Rust, model as ILP with \`good_lp\` and dispatch to HiGHS or CBC.  For vertex cover specifically with small k, branch-and-bound by hand: pick any uncovered edge, branch on which endpoint to include, recurse with k decreased by one.  About forty lines.
+The approximability picture is different across the three.  Vertex cover has a simple algorithm that gets within a factor of two of optimal — pick any uncovered edge, add both endpoints to the cover, repeat.  Twenty lines of code, two-times-optimal guarantee.  Independent set and clique are much worse — no constant-factor approximation exists unless P = NP.
 
-When you see one of these three problems, you have actually seen all three.  And you have seen NP-complete.`
+Vertex cover is also one of the most parameterized-friendly NP-complete problems.  When the optimal cover is small (parameter k), the work grows exponentially only in k, not in the input size.  For a graph with millions of nodes and a cover of size twenty, exact solutions are fast.
+
+In Rust, model as integer programming via good_lp and dispatch to HiGHS for exact solutions on moderate instances.  For larger or worst-case instances, accept approximation or use a SaaS.
+
+When you see a "pick the best subset" problem, it is probably one of these three.  Treat the estimate accordingly.`
   },
   {
-    title: 'Graph coloring',
-    tldr: '2-coloring is in P (bipartite check).  3-coloring and beyond are NP-complete.',
-    gesture: 'k-coloring with k = 2 is bipartite-testing.  With k = 3 it falls off the cliff into NP-complete.',
-    body: `A proper k-coloring of a graph assigns one of k colors to each vertex such that no edge has both endpoints the same color.  2-coloring is solvable in linear time — a graph is 2-colorable iff it is bipartite, and BFS or DFS decides bipartiteness in O(V + E).  3-coloring is NP-complete (Karp 1972, Stockmeyer 1973), and k-coloring for any fixed k ≥ 3 is NP-complete.  Approximating the chromatic number within n^{1−ε} is NP-hard (Feige-Kilian 1996, Zuckerman 2006).  The DSATUR heuristic (Brélaz 1979) and tabu search work well in practice.  In Rust, hand-roll backtracking for exact small-graph coloring, model as 0-1 ILP via \`good_lp\` for medium instances, or encode in SAT and use \`splr\`.`,
-    citation: 'Karp, R. M. (1972). *Reducibility Among Combinatorial Problems.*  Stockmeyer, L. J. (1973). *Planar 3-Colorability is Polynomial Complete.* SIGACT News 5(3).',
+    title: 'Coloring — the two-versus-three cliff',
+    tldr: 'Coloring with two categories (bipartite check) is fast.  Three or more categories is NP-complete.  Sometimes the right move is to redesign to need only two.',
+    gesture: 'Two-coloring is cheap.  Three-coloring is famously expensive.  The boundary appears in scheduling, register allocation, and frequency assignment.',
+    body: `Graph coloring asks: can every item be assigned one of k categories such that related items get different categories?  Two categories is bipartite testing and is in the cheap category.  Three or more is NP-complete.  Business uses: register allocation in compilers, frequency assignment in wireless networks, exam scheduling (no student takes two exams at the same time), conflict-free room assignment, manufacturing line scheduling.  When the constraint graph is sparse enough to be two-colorable, the work is linear.  When it is not, you are in the expensive category.  The right responses to a three-or-more coloring problem are: model as a SAT problem and use an industrial solver; model as integer programming via good_lp; use the DSATUR heuristic which works well in practice on many real graphs; or redesign the requirement to need fewer categories.`,
+    citation: 'Karp, R. (1972) proved 3-coloring NP-complete.  Stockmeyer, L. (1973) extended to planar graphs.',
     link: 'https://en.wikipedia.org/wiki/Graph_coloring',
-    eli5: `Graph coloring asks: can you assign one of k colors to each vertex such that adjacent vertices get different colors?  Real applications include register allocation in compilers, frequency assignment in wireless networks, scheduling exams to non-overlapping time slots, and Sudoku.
+    eli5: `Coloring problems show up in scheduling, allocation, and configuration — anywhere you need to assign things to categories such that conflicting things get different categories.  Examination scheduling: students cannot take two exams at the same time.  Wireless frequency assignment: nearby towers cannot use the same frequency.  Compiler register allocation: variables alive at the same time need different registers.  Operating-room scheduling: conflicting surgeries need different rooms.
 
-For k = 1, trivial — only graphs with no edges work.
+The cliff in difficulty is between two categories and three.  With two categories, the problem is bipartite testing — does the conflict graph have any odd cycles?  This is linear time.  Your team ships the feature in days.
 
-For k = 2, the problem is exactly bipartite testing.  A graph is 2-colorable iff it has no odd cycle.  BFS from any vertex, color levels alternately, check for consistency on every edge.  Linear time.
+With three or more categories, the problem becomes NP-complete.  No polynomial-time algorithm is known.  In practice, three responses work:
 
-For k = 3, the problem becomes NP-complete.  This is the canonical cliff.  Karp included 3-coloring in his 1972 list; Stockmeyer in 1973 strengthened it to planar 3-coloring (planar 4-coloring is always possible by the Four Color Theorem, but deciding planar 3-colorability is still NP-complete).
+First, use a SAT solver.  Encode "vertex v gets color c" as a Boolean variable, add clauses enforcing exactly-one-color-per-vertex and different-colors-on-edge, dispatch to splr.  Modern SAT solvers handle graphs with thousands of vertices and dozens of colors.
 
-For any k ≥ 3, k-coloring is NP-complete.  Finding the chromatic number — the minimum k for which the graph is k-colorable — is NP-hard.  No polynomial-time approximation within any constant factor is possible unless P = NP.
+Second, model as integer programming.  Binary variables for vertex-color pairs, constraints for exclusivity and conflict.  Call HiGHS via good_lp.  Comparable scale.
 
-The practical heuristics are good despite the theoretical hardness.  DSATUR (Degree of Saturation) iteratively colors the vertex with the most distinct colors among its neighbors, breaking ties by degree.  It produces optimal colorings on many real graph classes.  Tabu search, simulated annealing, and genetic algorithms all do reasonable jobs on hard instances.
+Third, accept a heuristic.  The DSATUR algorithm (degree-of-saturation) works well in practice: at each step, color the vertex that has the most distinct colors among its neighbors, choosing the smallest available color.  Not guaranteed optimal but often produces optimal or near-optimal colorings on real graphs.
 
-For exact small-graph coloring, encode in SAT and use \`splr\` — one Boolean variable per (vertex, color) pair, clauses enforcing exactly-one-color-per-vertex and different-colors-on-edge.  Modern SAT solvers handle graphs with hundreds of vertices and tens of colors.  For larger graphs, model as 0-1 ILP via \`good_lp\` with HiGHS.
+The fourth response, often the right one, is to redesign the requirement.  Two categories cover a surprising number of conflict structures.  When you find yourself with a coloring problem that has three or more categories, ask whether the requirement can be relaxed.  Can the exams be scheduled in two slots (morning and afternoon)?  Can the frequency band be split into two bands per region?  If you can collapse to two categories, you collapse to linear time.
 
-The 2-vs-3 cliff is the central lesson.  Reducing a graph problem to "binary classification of vertices" (2-coloring) often lands in P.  Three classes pushes you to NP-complete.  See page 38.`
+When you cannot, the problem is genuinely in the expensive category.  Use the solvers.  Plan accordingly.`
   },
   {
-    title: 'Hamiltonian cycle',
-    tldr: 'NP-complete.  Held-Karp DP O(n²2ⁿ) for exact; reduction to SAT for moderate sizes.',
-    gesture: 'Visit every vertex exactly once and return — the cousin of Euler circuit that landed on the other side of P.',
-    body: `A Hamiltonian cycle in a graph is a cycle that visits every vertex exactly once.  Deciding existence is NP-complete (Karp 1972); the optimization variant on weighted graphs is TSP.  In contrast, Euler circuit existence — visiting every edge exactly once — is decidable in linear time (Hierholzer 1873): a graph has an Euler circuit iff it is connected and every vertex has even degree.  The contrast between vertex and edge constraints is the textbook example of how a small specification change moves a problem between classes.  The Held-Karp DP from 1962 solves Hamiltonian cycle in O(n²·2ⁿ).  Bellman's 1962 inclusion-exclusion bound is similar.  In Rust, model as SAT or ILP for moderate n, or hand-roll the bitmask DP for n up to roughly 20.`,
-    citation: 'Karp, R. M. (1972). *Reducibility Among Combinatorial Problems.*  Held, M., Karp, R. M. (1962). *A Dynamic Programming Approach to Sequencing Problems.* JSIAM 10(1).',
+    title: 'The Hamilton trap',
+    tldr: 'Visit every location once is hard.  Visit every connection once is cheap.  The two sound the same and are not.',
+    gesture: 'The most famous "looks easy, is actually hard" problem in graph theory.  Read the requirement carefully.',
+    body: `Two problems sound identical and are not.  Euler circuit: traverse every connection in a network exactly once and return to the start.  Solvable in linear time — connected network where every node has even degree.  Hamilton circuit: visit every node in a network exactly once and return to the start.  NP-complete.  The change from "every edge" to "every vertex" is one word and a complexity-class cliff.  Business uses of Hamilton circuit appear in DNA sequencing, snowplow routing (with twists), and various puzzle and game contexts.  Business uses of Euler circuit appear in postal delivery (visit every street), inspection routing, and any visit-every-link problem.  When sizing a routing feature, the first question is whether the requirement is visit-every-link or visit-every-stop.  The first is days.  The second is a quarter (or a SaaS).`,
+    citation: 'Karp, R. (1972) for Hamiltonian.  Hierholzer, C. (1873) for Euler.',
     link: 'https://en.wikipedia.org/wiki/Hamiltonian_path_problem',
-    eli5: `The Hamiltonian cycle problem is one of the cleanest examples of how a tiny specification change moves a problem between complexity classes.
+    eli5: `The Euler-versus-Hamilton confusion is one of the most expensive mistakes in graph-problem planning.  The two problems sound nearly identical and are in different complexity classes.
 
-Euler circuit: a closed walk that traverses every edge exactly once.  Euler proved in 1735 that a connected graph has one iff every vertex has even degree.  Hierholzer in 1873 gave a linear-time algorithm.  This is the famous Königsberg bridges problem, the founding example of graph theory.  Linear time.  In P.
+Euler circuit: walk through the network and traverse every edge (connection) exactly once, returning to where you started.  Euler proved in 1735 that this is possible exactly when the network is connected and every node has an even number of edges.  Hierholzer in 1873 gave a linear-time algorithm to construct the path.  This is the original Königsberg bridges problem, the founding example of graph theory.
 
-Hamiltonian cycle: a closed walk that visits every vertex exactly once.  Almost the same sentence, with "edge" replaced by "vertex."  And the problem is NP-complete.  No polynomial-time algorithm is known.  The Held-Karp DP from 1962 runs in O(n²·2ⁿ).  Brute force is O(n!).  Modern SAT and ILP solvers handle instances with hundreds of vertices for structured cases.
+Hamilton circuit: walk through the network and visit every node exactly once, returning to where you started.  This is NP-complete.  No polynomial-time algorithm is known.  Held-Karp dynamic programming solves it exactly for up to about twenty nodes.  Beyond that, you need SAT or integer programming.
 
-The reason this transition matters is that it is the canonical example of how complexity classes are sensitive to specification.  Edge-traversal is in P because every edge is touched exactly once and counting parities locally determines feasibility.  Vertex-traversal is NP-complete because visiting every vertex once requires global coordination — no local property suffices to decide feasibility.
+The change from "every edge" to "every vertex" is the difference between a half-day feature and a quarter-long project.  In business requirements, the same change can hide in plain sight.
 
-For exact small-graph Hamiltonian cycle, hand-roll the bitmask DP.  State: (subset S of visited vertices, current vertex v).  Value: is there a path from the start, visiting exactly S, ending at v.  Transition: from (S, v), for each neighbor u not in S, set dp[S ∪ {u}][u] = true if dp[S][v] is true.  Answer: dp[V][v] is true and the start is adjacent to v.
+Visit every street in a neighborhood: every-edge problem.  Euler.  Cheap.
 
-For larger instances, encode in SAT — one variable per (position, vertex) pair, clauses enforcing one vertex per position, one position per vertex, edges between consecutive positions.  Use \`splr\`.
+Visit every customer in a territory: every-vertex problem.  Hamilton (or, if you also want shortest, TSP).  Expensive.
 
-For weighted variants (TSP), see page 25.
+The reason the difference exists is structural.  Edge-traversal can be checked locally — every node has even degree.  Vertex-traversal cannot — visiting every vertex requires global coordination, and no local property determines whether the global walk exists.
 
-Edge → P.  Vertex → NP-complete.  The same trip described two ways, two different worlds.  See page 38.`
+For business planning, the discipline is to read routing requirements carefully and identify whether the cost is in the edges or the vertices.  "Inspect every road segment" is edges.  "Visit every store" is vertices.  Same shape of requirement, two different complexity classes.
+
+When in doubt, ask the requester: what counts as a unit of work — the road, or the stop?  Their answer determines your sprint plan.`
   },
   {
-    title: 'Subset sum and partition',
-    tldr: 'Both NP-complete.  Pseudo-polynomial DP O(nS).  Meet-in-the-middle O(2^(n/2)) for exact.',
-    gesture: 'Pick a subset summing to a target — the simplest NP-complete arithmetic problem.',
-    body: `Subset sum: given a set of integers and a target T, does some subset sum exactly to T?  Partition: can a set of integers be split into two subsets with equal sums?  Both NP-complete (Karp 1972).  Like 0/1 knapsack, they are weakly NP-complete — a dynamic programming algorithm on (item, partial sum) runs in O(nS) where S is the target, polynomial in n and S but exponential in the bit-length of S.  Horowitz and Sahni's 1974 meet-in-the-middle technique solves subset sum in O(2^(n/2)) time and O(2^(n/2)) space — far better than naive 2^n for moderate n.  In Rust, hand-roll the DP for small targets, the meet-in-the-middle for n around 40–60, or call \`good_lp\` for ILP modeling.`,
-    citation: 'Karp, R. M. (1972). *Reducibility Among Combinatorial Problems.*  Horowitz, E., Sahni, S. (1974). *Computing Partitions with Applications to the Knapsack Problem.* JACM 21(2).',
+    title: 'Find a subset that sums right',
+    tldr: 'Picking items that sum to exactly the target is NP-complete but practically tractable when numbers are reasonable.',
+    gesture: 'The simplest NP-complete arithmetic problem.  Shows up in finance, scheduling, and resource allocation.',
+    body: `Subset sum: given a set of numbers and a target, find a subset summing exactly to the target.  Partition: split a set into two equal-sum halves.  Both NP-complete.  Business uses include change-making with constraints, financial netting (find a subset of trades summing to a specific cash position), inventory balancing (split warehouse contents into equal-value shipments), workload partitioning across machines.  Like knapsack, these are weakly NP-complete — the standard dynamic programming algorithm runs in time proportional to items times target value, fast for typical business inputs.  For problems where the numbers are very large (cryptocurrency, exact dollar amounts), the meet-in-the-middle technique handles up to around sixty items.  In Rust, hand-roll the DP for small target values, or model as integer programming.`,
+    citation: 'Karp, R. (1972).  Horowitz, E., Sahni, S. (1974) for meet-in-the-middle.',
     link: 'https://en.wikipedia.org/wiki/Subset_sum_problem',
-    eli5: `Subset sum is the simplest NP-complete arithmetic problem.  Given a multiset of integers and a target, decide whether some subset sums to the target.  Partition is the special case where the target is half the total — split the set into two equal-sum halves.
+    eli5: `Subset sum is the simplest NP-complete arithmetic problem and shows up in business more often than you would expect.  Given a set of numbers and a target, find a subset that sums exactly to the target.
 
-Both are NP-complete, both weakly so.  The standard DP fills a Boolean table dp[i][s] = "some subset of the first i items sums to s."  Recurrence: dp[i][s] = dp[i−1][s] OR dp[i−1][s−aᵢ] (if aᵢ ≤ s).  Time O(n · S), space reducible to O(S) by keeping one row.  Polynomial when S is polynomial in n, exponential in S's bit-length.
+Business uses: change-making with denomination constraints (find the smallest set of bills summing to a specific amount).  Financial netting (find a subset of trades summing to a target cash position).  Inventory balancing (split a warehouse into two equal-value shipments, or split a portfolio into two equal-risk halves).  Workload partitioning (assign jobs to identical machines to equalize total processing time).
 
-For instances where the target is huge but n is moderate, the Horowitz-Sahni meet-in-the-middle is the trick.  Split the items into two halves of size n/2.  Enumerate all 2^(n/2) subset sums of each half — that is feasible for n up to 60.  Sort one list; for each value in the other list, binary search for its complement.  Total time O(2^(n/2) log 2^(n/2)) = O(n · 2^(n/2)).  For n = 40, this is roughly 10^6 ·  20 = 20 million operations.  Tractable.
+Like knapsack, this problem is "weakly" NP-complete.  The standard dynamic programming algorithm runs in time proportional to the number of items times the target value.  For business problems where the target is in the thousands or low millions, this is fast — seconds on a laptop.  For cryptographically large targets, the same algorithm is infeasible.
 
-Subset sum is the canonical reduction target for several other NP-completeness proofs — partition, bin packing, makespan minimization on identical machines.  Karp's 1972 paper used subset sum as the bridge from 3-SAT to many number-theoretic problems.
+When the number of items is moderate (around forty to sixty) but the target is huge, the right technique is meet-in-the-middle.  Split the items into two halves.  Enumerate all possible subset sums of each half (about a million subsets per half for thirty items each).  Sort one list and binary-search the other for complements.  This handles up to about sixty items even with arbitrary-precision arithmetic.
 
-In Rust, the DP is fifteen lines.  Meet-in-the-middle is fifty.  For modeling as part of a larger optimization, \`good_lp\` with binary variables.
+For larger or more complex variants — multiple targets, constraints on subset size, mixed coverage requirements — model as integer programming.  Binary variables for "include this item or not," sum constraint, dispatch to HiGHS via good_lp.  Modern MIP solvers handle thousands of items in reasonable time.
 
-The class story is the same as knapsack.  Pseudo-polynomial DP makes the problem tractable when numbers are small.  Truly large numbers — cryptographically large — push the problem back into exponential territory.  This is the basis of the Merkle-Hellman knapsack cryptosystem, broken by Shamir in 1982 because the chosen "small" instances had hidden structure.
+The teaching for business planning: subset sum is "expensive in theory but cheap in practice" for typical inputs.  The expensive case is when the target value is genuinely large in absolute terms — billions or more.  Read the numbers before sizing the work.
 
-Weakly NP-complete.  Use the size of the numbers as your guide.`
+This is also the simplest reduction target.  Many other NP-complete problems can be turned into subset sum problems.  Spotting it under a different name is a leveraged engineering move.`
   },
   {
-    title: 'Bin packing',
-    tldr: 'NP-complete.  First-Fit-Decreasing approximation 11/9 OPT + 6/9.  ILP for exact.',
-    gesture: 'Pack items into the fewest bins — strongly NP-complete, with surprisingly tight approximations.',
-    body: `Bin packing: given items of various sizes and bins of fixed capacity, pack all items into the minimum number of bins.  Strongly NP-complete (Garey-Johnson 1979).  First-Fit-Decreasing (FFD) — sort items descending, place each in the first bin that fits — uses at most 11/9 · OPT + 6/9 bins (Johnson 1973, tightened by Dósa 2007).  An asymptotic polynomial-time approximation scheme (APTAS) exists (Fernandez de la Vega-Lueker 1981).  For exact small instances, model as ILP and dispatch to HiGHS via \`good_lp\` — binary variables x_{ij} for "item i goes in bin j" plus a binary indicator y_j for "bin j is used."  In Rust, hand-roll FFD for fast heuristic answers, or model exactly in \`good_lp\`.`,
-    citation: 'Johnson, D. S. (1973). *Near-Optimal Bin Packing Algorithms.* PhD thesis, MIT.  Garey, M. R., Johnson, D. S. (1979). *Computers and Intractability.*',
+    title: 'Bin packing — fit the items into the fewest containers',
+    tldr: 'Packing items into the fewest fixed-capacity containers is NP-complete but has great approximations.  Most business uses are well-served by First-Fit-Decreasing.',
+    gesture: 'Bin packing is the workhorse hard problem.  When it shows up, the approximation is usually good enough.',
+    body: `Bin packing: given items with various sizes and bins with fixed capacity, pack everything into the fewest bins.  Business uses include packing virtual machines onto physical servers, packing files onto storage volumes, packing cargo into containers, packing ad creatives into broadcast time slots, packing software jobs onto compute clusters.  Strongly NP-complete.  But the approximation picture is excellent.  First-Fit-Decreasing (FFD) — sort items by decreasing size, place each in the first bin that fits — uses at most 11/9 of the optimal bin count.  On real workloads, the result is typically within a few percent of optimal.  For business problems where the approximation gap matters, model as integer programming and call HiGHS.  Most operational bin packing in production uses FFD as the workhorse and reserves exact solvers for offline planning.`,
+    citation: 'Johnson, D. (1973).  Garey, M., Johnson, D. (1979).',
     link: 'https://en.wikipedia.org/wiki/Bin_packing_problem',
-    eli5: `Bin packing shows up everywhere you have to fit things into containers: virtual machines on physical servers, ads into TV breaks, files on disks, cargo into trucks, problems into compute time.  It is strongly NP-complete, but it has some of the best approximation algorithms in the field.
+    eli5: `Bin packing is one of the most useful "hard" problems in business operations.  It shows up everywhere you have fixed-capacity containers to fill: virtual machines on physical servers, files on disks, cargo in shipping containers, ads in television breaks, compute jobs on cluster nodes, parts in shipping pallets.
 
-The simplest heuristic is First-Fit: process items in arrival order, put each in the first bin that has room, open a new bin if none does.  First-Fit uses at most 1.7 · OPT bins.
+The problem is strongly NP-complete — even when all the sizes are bounded by polynomially in the number of items, no polynomial-time exact algorithm is known.  But the approximation picture is unusually good.
 
-First-Fit-Decreasing (FFD) is the same algorithm with items sorted in decreasing order of size first.  Johnson's 1973 thesis proved FFD uses at most 11/9 · OPT + 6/9 bins.  Dósa in 2007 tightened the bound and showed it is tight in the worst case.  For practical inputs, FFD is often within a few percent of optimal.
+The simplest heuristic that works is First-Fit: process items in arrival order, put each one in the first bin that has room, open a new bin only when none does.  First-Fit uses at most 70% more bins than optimal.
 
-Best-Fit-Decreasing (BFD) is FFD with a different tie-breaker — place each item in the bin where it leaves the least leftover space.  Same asymptotic bound, sometimes slightly better in practice.
+First-Fit-Decreasing is the same algorithm with items sorted in decreasing size first.  This is the workhorse approximation.  It uses at most 11/9 of the optimal bin count — about 22% worse than optimal in the worst case.  On typical operational workloads, the result is within a few percent of optimal, often within one bin.
 
-For exact answers, model as ILP.  Variables: x_{ij} = 1 iff item i goes in bin j; y_j = 1 iff bin j is used.  Constraints: each item in exactly one bin, total size in each bin at most capacity, x_{ij} ≤ y_j.  Objective: minimize Σ y_j.  Hand to HiGHS via \`good_lp\`.
+For business problems where the few-percent gap matters — long-term capacity planning, billing where overprovisioning is expensive — model as integer programming.  Variables for "item i in bin j," a constraint that every bin's total size is under capacity, an objective to minimize the number of used bins.  Hand to HiGHS via good_lp.  Modern MIP solvers handle hundreds of items in seconds for exact answers.
 
-A more efficient ILP uses configuration variables — enumerate every feasible subset of items that fits in one bin, decide how many bins of each configuration to use.  This is the column-generation approach, scales to hundreds of items.
+The pattern that works in production: use FFD as the default for real-time decisions (server packing on incoming requests, real-time logistics).  Use exact integer programming for offline planning (quarterly capacity, route design).  The combination gives you good decisions fast and great decisions overnight.
 
-In Rust, FFD is about thirty lines.  Build a Vec of bins, sort items descending, iterate and place.  For exact, build the ILP in \`good_lp\`.
+For planning estimates: bin packing requests should be sized as days, not weeks, because the algorithm is well-understood and the libraries handle the work.  The engineering effort is in defining sizes correctly (what is the "capacity"?  what is the "size"?), not in the packing.
 
-Bin packing is the workhorse problem.  When you have a fixed-capacity packing problem, FFD is the fast first answer.  The 11/9 approximation ratio is the price you pay for staying in P on an NP-complete problem.  Page 33 explains the broader theory of approximation algorithms.`
+The category is "hard but well-tooled."  Use the tools.`
   },
   {
-    title: 'Integer Linear Programming',
-    tldr: 'NP-complete.  good_lp + HiGHS or CBC handles thousands of variables for practical instances.',
-    gesture: 'LP plus the integer requirement.  The single most useful NP-complete framework in practice.',
-    body: `Integer linear programming extends LP by requiring some or all variables to take integer values.  ILP is NP-complete (Karp 1972).  Mixed integer programming (MIP) allows both integer and continuous variables and inherits the hardness.  Modern MIP solvers — HiGHS (open source), Gurobi, CPLEX, SCIP — combine branch-and-bound, cutting-plane methods (Gomory cuts, mixed-integer rounding cuts), primal heuristics, and presolve into engineering monuments that solve practical instances with hundreds of thousands of variables.  An enormous fraction of operations research problems are MIP under the hood.  In Rust, \`good_lp\` lets you declare integer variables with \`add_variable().integer()\` and dispatches to a backend solver.  HiGHS is the recommended open-source choice; \`coin_cbc\` and \`scip\` are alternatives.`,
-    citation: 'Karp, R. M. (1972). *Reducibility Among Combinatorial Problems.*  Gomory, R. E. (1958). *Outline of an Algorithm for Integer Solutions to Linear Programs.* Bull. AMS 64.',
+    title: 'When the variables must be whole numbers',
+    tldr: 'Linear programming with integer variables is NP-complete.  But modern solvers handle hundreds of thousands of variables on practical instances.',
+    gesture: 'Integer programming is NP-complete in theory and the most useful framework in operations research in practice.  Buy the solver.',
+    body: `Integer linear programming (ILP) is linear programming with the requirement that some or all variables take integer values.  This single addition pushes the problem from polynomial to NP-complete.  It also makes it the most useful framework in operations research.  Vehicle routing, crew scheduling, capacity planning, network design, facility location, production planning — all most naturally expressed as integer programs.  Modern solvers (HiGHS, Gurobi, CPLEX) combine branch-and-bound, cutting-plane methods, primal heuristics, and presolve into engineering monuments that solve hundreds-of-thousands-of-variable problems in seconds.  Rust's good_lp library exposes ILP with the same modeling interface as LP — declare some variables as integer or binary, add constraints, set objective, solve.  HiGHS is the recommended open-source backend.  For competitive performance on the largest problems, Gurobi or CPLEX (commercial) are state of the art.`,
+    citation: 'Karp, R. (1972).  Gomory, R. (1958) introduced cutting planes.  Land, A., Doig, A. (1960) introduced branch-and-bound.',
     link: 'https://docs.rs/good_lp/latest/good_lp/',
-    eli5: `Integer linear programming is linear programming with one extra rule: some variables must be integers.  That single restriction transforms the problem from polynomial (LP, page 19) to NP-complete.  This is one of the most consequential complexity-class transitions in applied mathematics.
+    eli5: `Integer linear programming is linear programming with one extra rule: some variables must be whole numbers (or, in the binary case, 0 or 1).  That single rule transforms the problem from polynomial-time (LP, page 19) to NP-complete.  It also transforms it into the most useful framework in operations research.
 
-The reason ILP is harder than LP is that the feasible set stops being a convex polyhedron and becomes a lattice of integer points inside one.  LP can walk vertices of the polyhedron in polynomial time; ILP cannot, because the optimal integer point may be far from any LP vertex.  Branching on a fractional value of a variable — does it round up or round down? — generates an exponential search tree in the worst case.
+The reason ILP shows up so often is that real business decisions are discrete.  Either you build the warehouse or you do not.  Either this employee works the shift or they do not.  Either the truck makes the stop or it does not.  Continuous variables cannot model these decisions; integer variables can.
 
-And yet ILP is one of the most useful frameworks in practice.  Modern solvers combine many tricks.  Branch-and-bound searches the tree but prunes aggressively using LP relaxations as lower bounds.  Cutting planes — Gomory cuts, mixed-integer rounding cuts, cover cuts, clique cuts — add valid inequalities that tighten the relaxation without removing integer feasible points.  Presolve eliminates redundant variables and constraints.  Primal heuristics find feasible solutions quickly to establish bounds.  The result is that practical MIPs with tens of thousands of binary variables routinely solve in seconds.
+The reason ILP is NP-complete is that the feasible set is no longer a smooth shape but a discrete lattice inside one.  The fast algorithms that work for LP — walking vertices of the polyhedron, interior-point methods — do not apply.  In the worst case, you have to search an exponential tree of "this variable rounds up or down."
 
-Most NP-complete problems in this book — knapsack, vertex cover, bin packing, TSP, scheduling, set cover — can be modeled as ILP.  Modeling is usually straightforward: write down the constraints and the objective.  The solver handles the search.
+In practice, modern ILP solvers are engineering monuments.  They combine branch-and-bound (the exponential tree), cutting planes (added valid inequalities that tighten the relaxation without removing integer points), primal heuristics (find good feasible solutions quickly to bound the search), and presolve (eliminate redundant variables and constraints).  The result is that practical ILPs with hundreds of thousands of binary variables routinely solve in seconds.
 
-In Rust, \`good_lp\` is the modeling crate.  Define variables with \`add_variable().integer()\` or \`.binary()\`.  Add constraints with operator overloading.  Define the objective.  Call \`.solve()\` and pick a backend — \`highs\` is recommended.  The interface is comparable to PuLP in Python or JuMP in Julia.
+In Rust, good_lp is the modeling library.  Declare variables (.binary(), .integer(), or continuous), add constraints with operator overloading, set the objective, call solve, pick a backend.  HiGHS is the recommended open-source backend.  For the largest problems, Gurobi and CPLEX (commercial) remain state of the art and are worth the license cost when the optimization is core to the business.
 
-ILP is the Swiss Army knife of NP-complete in practice.  When you have an NP-complete optimization problem and you have not already identified a specialized algorithm, model as ILP and try.  Modern solvers are routinely competitive with specialized algorithms on practical instances.
+The teaching for planning: when your problem has discrete decisions and linear cost structure, model it as ILP and try the solver.  Modern MIP solvers handle a startling range of operational problems on commodity hardware.  The engineering effort is in modeling the problem correctly (right variables, right constraints, right objective), not in writing search code.
 
-LP is the line.  ILP is the cliff.  Page 38 puts them side by side.`
+ILP is NP-complete.  ILP solvers are great.  Both facts are true.`
   },
 
-  // ────────── Part IV — When you cannot solve exactly ──────────
+  // ──────── Part IV — When "hard" hits your roadmap ────────
   {
-    title: 'Approximation algorithms',
-    tldr: 'Polynomial-time algorithms with provable bounds on how far from optimal they can be.',
-    gesture: 'When you cannot solve exactly, the right replacement is "provably close."',
-    body: `An approximation algorithm for an optimization problem runs in polynomial time and produces a solution whose value is within a known factor of optimal.  For a minimization problem, an α-approximation produces an answer at most α · OPT for α ≥ 1.  Classic results: 2-approximation for vertex cover (greedy edge picking), 3/2-approximation for metric TSP (Christofides), ln(n)-approximation for set cover (greedy), 11/9 for bin packing (FFD).  Some problems have inapproximability lower bounds — independent set cannot be approximated within n^{1−ε} unless P = NP (Håstad 1996, Zuckerman 2006), set cover cannot be approximated within (1−o(1))·ln(n) (Feige 1998).  The approximation ratio is the metric of progress on NP-complete problems.  In Rust, most approximation algorithms are small enough to hand-roll directly.`,
-    citation: 'Vazirani, V. V. (2001). *Approximation Algorithms.* Springer.  Williamson, D. P., Shmoys, D. B. (2011). *The Design of Approximation Algorithms.* Cambridge.',
+    title: 'Approximation — provably close to optimal',
+    tldr: 'When exact is too expensive, the right replacement is "provably within a known factor of optimal."  The bound is the contract.',
+    gesture: 'An approximation algorithm trades exactness for speed — with a number attached to how much you sacrificed.',
+    body: `When exact methods are too slow for a hard problem, an approximation algorithm is the next layer of the toolkit.  An approximation is a polynomial-time algorithm with a proven bound on how far its answer can be from optimal — for example, "always within a factor of two."  Classic results: 2-approximation for vertex cover (greedy edge picking), 3/2-approximation for metric TSP (Christofides 1976), about-1.22 for bin packing (First-Fit-Decreasing), 1+log(n) for set cover (greedy).  The bound is the contract: your team knows exactly how much they are sacrificing.  Some problems are not even approximable — independent set, clique, graph coloring all resist constant-factor approximations.  When sizing a hard-problem feature, the relevant question is not "can we solve this" but "what approximation ratio is acceptable to the business and what algorithm achieves it."`,
+    citation: 'Vazirani, V. (2001) *Approximation Algorithms.*  Williamson, D., Shmoys, D. (2011) *The Design of Approximation Algorithms.*',
     link: 'https://www.designofapproxalgs.com/',
-    eli5: `An approximation algorithm trades exactness for speed.  Instead of finding the optimal solution to an NP-complete problem, you find a solution that is provably close — within a known factor.  The polynomial-time guarantee is preserved.  The exactness is sacrificed for tractability.
+    eli5: `An approximation algorithm is the honest reply to NP-completeness.  Instead of finding the optimal answer to a hard problem (which takes forever), you find an answer that is provably close — within a known factor — in polynomial time.  The bound is the contract.
 
-The greedy 2-approximation for vertex cover is the textbook starter.  Pick any uncovered edge, add both endpoints to the cover, remove all edges incident to those endpoints.  Repeat until no edges remain.  The result is a vertex cover (every edge was touched).  Its size is at most twice the optimal vertex cover, because every selected pair of endpoints includes at least one optimal-cover vertex.  Twenty lines.  2-approximation guaranteed.
+The textbook starter is the 2-approximation for vertex cover.  Pick any uncovered relationship, add both of its endpoints to your cover, repeat.  The result is at most twice the optimal cover size.  Twenty lines of code, formal guarantee.
 
-Christofides' 3/2-approximation for metric TSP is more elaborate.  Build a minimum spanning tree.  Find a perfect matching on the odd-degree vertices of the MST.  Combine MST and matching into an Eulerian multigraph; find an Euler tour; shortcut repeated vertices.  The result is a Hamiltonian tour at most 3/2 times the optimal TSP tour, assuming the triangle inequality.  This bound stood from 1976 until 2020.
+Christofides' 3/2-approximation for metric Traveling Salesman uses a more elaborate construction — a minimum spanning tree, a matching on its odd-degree nodes, an Euler tour, shortcuts — and produces a tour at most 50% longer than optimal.  This was the best known bound for forty-four years, finally improved to 3/2 − ε in 2020.
 
-Set cover gets a (1 + ln n)-approximation by greedy: repeatedly pick the set that covers the most uncovered elements.  This is tight — Feige proved in 1998 that no polynomial-time algorithm can do better unless P = NP.
+First-Fit-Decreasing for bin packing uses at most 22% more bins than optimal.  Greedy set cover gets within a logarithmic factor of optimal.  These bounds matter because they let you tell the business exactly what you are giving up.
 
-The deeper structure is that not all NP-complete problems are equally approximable.  Some — vertex cover, TSP, knapsack, bin packing — have constant-factor or near-constant-factor approximations.  Some — set cover, dominating set — have logarithmic ratios.  Some — independent set, clique, chromatic number — have ratios that are essentially the input size, meaning approximation is hopeless.
+For some problems, no good approximation is possible.  Independent set, clique, and graph coloring all resist constant-factor approximation — under standard assumptions, no polynomial-time algorithm can guarantee better than a roughly-input-size factor.  For these problems, the right reply to "what can we promise" is "nothing, but here is what works in practice."
 
-The PCP theorem (Arora-Lund-Motwani-Sudan-Szegedy 1998) is the theoretical backbone for inapproximability results — it shows that many NP-complete problems are hard to approximate beyond specific thresholds.  Page 34 explains the PTAS/FPTAS/APX hierarchy.
+The PCP theorem from 1998 is the theoretical engine that proves these limits.  It is one of the most consequential results in modern computer science: it shows that many NP-hard problems are also hard to approximate beyond specific thresholds.  The thresholds vary by problem and they are tight.
 
-In Rust, approximation algorithms are mostly small enough to hand-roll directly — vertex cover, set cover, FFD bin packing, Christofides all fit in a few dozen lines.  When you reach for an approximation, write the algorithm yourself and verify the bound by hand.
+For business planning, the question to ask once you have identified a problem as NP-hard is: what approximation ratio does the business accept?  10% off optimal?  50%?  Half-orders-of-magnitude?  The answer determines whether you need an exact solver (page 32), an approximation algorithm (this page), or a heuristic with no guarantees (page 36).
 
-Approximation is the honest reply to NP-completeness.  Use it.`
+The bound is the negotiation.  Use it.`
   },
   {
-    title: 'PTAS, FPTAS, and APX-hardness',
-    tldr: 'Approximation schemes give arbitrarily tight ratios — at a cost.  Not every NP-complete problem has one.',
-    gesture: 'The approximation hierarchy is the second layer of the complexity map — and it has its own dividing lines.',
-    body: `A polynomial-time approximation scheme (PTAS) is a family of algorithms parameterized by ε > 0, each producing a (1 + ε)-approximation in polynomial time (the polynomial may depend exponentially on 1/ε).  A fully polynomial-time approximation scheme (FPTAS) requires polynomial dependence on both input size and 1/ε.  0/1 knapsack admits an FPTAS.  Euclidean TSP admits a PTAS (Arora 1996).  APX is the class of problems with constant-factor approximations.  APX-hard problems — vertex cover, TSP general, set cover — cannot be approximated arbitrarily closely unless P = NP.  The PCP theorem is the engine behind APX-hardness proofs.  Knowing where your problem sits in this hierarchy tells you what approximation quality is theoretically achievable.`,
-    citation: 'Arora, S., Lund, C., Motwani, R., Sudan, M., Szegedy, M. (1998). *Proof Verification and the Hardness of Approximation Problems.* JACM 45(3).  Arora, S. (1996). *Polynomial Time Approximation Schemes for Euclidean TSP and Other Geometric Problems.* FOCS.',
+    title: 'The approximation hierarchy — how good can you get',
+    tldr: 'Some hard problems have arbitrarily tight approximations (FPTAS).  Some have only constant-factor (APX).  Some are hopeless.',
+    gesture: 'The second layer of the complexity map: not all "approximable" problems are equally approximable.',
+    body: `Approximation algorithms have their own complexity hierarchy.  FPTAS — Fully Polynomial-Time Approximation Scheme — is the gold standard: tunable closeness to optimal with polynomial cost in both input size and the tightness.  Knapsack has an FPTAS.  PTAS is the next tier: polynomial cost in input size, but the polynomial may explode as the tightness increases.  Euclidean TSP has a PTAS.  APX is the class of problems with constant-factor approximations.  APX-hard means no PTAS exists unless P = NP — vertex cover, metric TSP, set cover are APX-hard.  Some problems (independent set, clique) cannot even be approximated within constant factors.  For business planning, knowing where a problem sits in this hierarchy determines how much approximation budget you have.  An FPTAS lets you trade compute for quality smoothly.  APX-hard problems have a fixed quality ceiling — you can hit the bound but not improve below it without breaking complexity assumptions.`,
+    citation: 'Arora, Lund, Motwani, Sudan, Szegedy (1998) the PCP theorem — the theoretical engine behind approximation limits.',
     link: 'https://en.wikipedia.org/wiki/Polynomial-time_approximation_scheme',
-    eli5: `Approximation algorithms have their own complexity hierarchy.  Not every NP-complete problem is equally approximable, and the labels above are the field's way of charting the territory.
+    eli5: `Not all NP-hard problems are equally approximable.  The field has a hierarchy of labels that tells you, for any given hard problem, how close to optimal you can hope to get in polynomial time.
 
-PTAS — Polynomial-Time Approximation Scheme.  For any ε > 0, you can get within (1 + ε) of optimal in polynomial time.  The polynomial may have ε in the exponent, so getting closer is slower.  Euclidean TSP has a PTAS — Arora's 1996 algorithm.  So do scheduling problems on identical machines.  A PTAS says "you can approach optimal as closely as you are willing to pay for."
+The gold standard is FPTAS — Fully Polynomial-Time Approximation Scheme.  This means: for any quality target you specify (90% of optimal, 99%, 99.9%), there is an algorithm that achieves it in time polynomial in both the input size and the inverse of the gap.  You get a quality knob to turn, and turning it tighter only costs polynomially more.  Knapsack has an FPTAS — for any tolerance, an algorithm exists.
 
-FPTAS — Fully Polynomial-Time Approximation Scheme.  Same idea, but the running time is polynomial in both input size and 1/ε.  Much stronger guarantee.  0/1 knapsack has an FPTAS: scale values, run the pseudo-polynomial DP on scaled inputs, scale back.  Time O(n³/ε).  FPTAS is the gold standard for approximability.
+One step down is PTAS — Polynomial-Time Approximation Scheme.  Same idea, but the polynomial can have the inverse gap in the exponent.  This means tightening the approximation makes the algorithm exponentially slower in the tightness, even though it stays polynomial in input size.  Euclidean TSP has a PTAS.  PTAS is good news but with a caveat — production users typically pick a fixed tolerance and stick with it.
 
-APX — the class of problems with constant-factor approximations.  Vertex cover (factor 2), bin packing (factor 11/9 + o(1)), MAX-3SAT (factor 7/8), set cover (factor ln n + 1) — though that last one is not constant.
+APX is the class of problems with some constant-factor approximation — within 2 of optimal, or 50% of optimal, or whatever.  No quality knob, just one fixed ratio.  Many practical hard problems sit here.
 
-APX-hardness — a problem is APX-hard if it does not admit a PTAS unless P = NP.  Vertex cover is APX-hard.  Metric TSP is APX-hard.  Set cover is even harder — it does not even admit a constant-factor approximation better than ln n.  Independent set is among the worst, with no n^{1−ε} approximation possible.
+APX-hard is the bad news.  These problems cannot be approximated arbitrarily closely unless P = NP.  Vertex cover is APX-hard at the 2-approximation barrier (no PTAS unless P = NP, though small improvements below 2 are not ruled out yet).  Metric TSP is APX-hard.  Set cover is APX-hard at the logarithmic barrier.
 
-The engine behind APX-hardness is the PCP theorem.  It is the most influential theorem in theoretical computer science of the last forty years.  Arora-Lund-Motwani-Sudan-Szegedy in 1998 (building on Arora-Safra 1992) showed that NP problems have probabilistically checkable proofs — a verifier can check an NP certificate by sampling only a constant number of bits.  This characterization of NP, applied via gap-introducing reductions, proved tight inapproximability bounds for many problems.
+Then there are problems that resist constant-factor approximation entirely.  Independent set, clique, graph coloring — these have no polynomial-time approximation within any constant factor unless P = NP.  For these problems, the right approach is heuristic with no guarantees (page 36).
 
-For practical Rust code, the hierarchy matters because it tells you what to expect.  If your problem is in APX-hard with no constant approximation known, the best you can do is heuristic — simulated annealing, local search, ILP with time limits.  If your problem has an FPTAS, write the FPTAS; it gives you a knob to turn between speed and quality.
+For business planning, the hierarchy tells you the engineering reality.  An FPTAS problem is one where the quality-versus-compute trade-off is yours to tune.  A PTAS problem requires committing to a tolerance upfront.  An APX problem has one ratio and you take it or leave it.  An APX-hard problem cannot improve below its known bound without a breakthrough.  An inapproximable problem has no theoretical floor at all.
 
-Knowing where you sit determines the toolkit.`
+The engine behind all of this is the PCP theorem from 1998, which characterizes NP via probabilistic verification and lets you prove inapproximability bounds.  Most working engineers do not need the details, but knowing the labels exist is enough to size the work correctly.`
   },
   {
-    title: 'Parameterized complexity (FPT)',
-    tldr: 'Some NP-complete problems become polynomial when one input dimension is small.  The right way to be NP-complete.',
-    gesture: 'NP-completeness is worst-case in the input size.  Real instances often have a small structural parameter — exploit it.',
-    body: `Parameterized complexity studies problems with a designated parameter k.  A problem is fixed-parameter tractable (FPT) if there is an algorithm running in time f(k) · n^O(1) for some computable f — polynomial in n, arbitrary dependence on k.  Vertex cover is FPT in cover size: O(1.27^k · n).  Treewidth-bounded problems are FPT in treewidth — most NP-complete problems become polynomial on graphs of bounded treewidth via Courcelle's theorem (1990) and dynamic programming on tree decompositions.  The complement class W[1]-hard problems (clique parameterized by size) are not believed to be FPT.  Downey and Fellows established the field in their 1999 book.  In Rust, FPT algorithms are usually hand-rolled — branching, kernelization, treewidth DP — though graph libraries like \`petgraph\` provide the data structures.`,
-    citation: 'Downey, R. G., Fellows, M. R. (1999). *Parameterized Complexity.* Springer.  Cygan, M. et al. (2015). *Parameterized Algorithms.* Springer.',
+    title: 'When one dimension is small',
+    tldr: 'Some hard problems become cheap when one part of the input is small — even if the rest is huge.  Look for the small parameter.',
+    gesture: 'NP-hard does not mean uniformly hard.  Real problems often have a small dimension you can exploit.',
+    body: `Many NP-hard problems become polynomial when one structural parameter of the input is small, even if the rest is huge.  Vertex cover on a graph with millions of nodes is fast when the optimal cover is small (work grows exponentially only in the cover size, not the graph size).  Problems on graphs with bounded treewidth (a measure of how tree-like the graph is) are polynomial via dynamic programming on a tree decomposition — and most NP-complete graph problems collapse this way.  This area is called parameterized complexity.  In practice, real business problems often have small structural parameters that the team can exploit: small kernel size after preprocessing, small treewidth, small number of conflicting items, small number of distinct values.  Identifying the small parameter is the engineering win.`,
+    citation: 'Downey, R., Fellows, M. (1999) *Parameterized Complexity.*  Cygan, M. et al. (2015) *Parameterized Algorithms.*',
     link: 'https://www.springer.com/gp/book/9783319212746',
-    eli5: `Classical complexity is binary.  A problem is in P or it is not.  Polynomial time as a function of total input size or nothing.  But real instances have structure.  A network may have millions of nodes but a small feedback vertex set.  A query plan may have many tables but small treewidth.  A scheduling problem may have many jobs but few machines.
+    eli5: `Classical complexity is binary: a problem is in P or it is not, where "in P" means polynomial-time as a function of total input size.  Real business problems have more structure than that.  A network may have millions of nodes but a small "feedback" — a small set of nodes whose removal eliminates all cycles.  A scheduling problem may have many jobs but few machines.  A constraint problem may have many variables but small interaction depth.
 
-Parameterized complexity exploits this structure.  Choose a parameter k that captures the structural property.  Ask whether the problem admits an algorithm whose running time is polynomial in n with the exponential part isolated in k.  Formally: time f(k) · n^c for some computable f and constant c.  Such a problem is fixed-parameter tractable, or FPT.
+Parameterized complexity exploits these structural facts.  You identify a parameter — call it k — that captures the relevant smallness.  You then ask whether the problem can be solved in time polynomial in the total input size, with all the exponential cost confined to k.  If yes, the problem is "fixed-parameter tractable" in k, and you can solve it efficiently as long as k stays small.
 
-Vertex cover (page 27) is FPT in the cover size.  Branch-and-bound: pick any uncovered edge, branch on which endpoint to include, recurse with k decreased by one.  Worst-case 2^k branches.  Combined with kernelization rules, the time becomes O(1.27^k · n).  For graphs with small vertex covers, this is fast even when n is huge.
+Vertex cover is the textbook example.  Branching algorithm: pick any uncovered edge, branch on which endpoint to include in the cover, recurse with k decreased by one.  Worst case branches 2^k times.  Combined with kernelization rules — preprocessing that removes parts of the graph that obviously must or must not be in the cover — the algorithm runs in roughly 1.27^k times the graph size.  For a graph with millions of nodes and a target cover of size 30, this is fast.
 
-Treewidth is the swiss army knife of structural parameters.  Many NP-complete graph problems — vertex cover, independent set, dominating set, Hamiltonian cycle, graph coloring, MAX-CUT — admit linear-time algorithms on graphs of bounded treewidth via dynamic programming on a tree decomposition.  Courcelle's theorem (1990) generalizes this to any property expressible in monadic second-order logic.
+Treewidth is the structural parameter for graphs.  It measures how "tree-like" a graph is.  Trees have treewidth 1; series-parallel graphs have treewidth 2.  Most NP-complete graph problems — vertex cover, independent set, Hamiltonian cycle, graph coloring — become polynomial on graphs of bounded treewidth via dynamic programming on a "tree decomposition."  Courcelle's theorem from 1990 generalizes this: any graph property expressible in a specific logical language is solvable in linear time on bounded-treewidth graphs.
 
-The complement is W[1]-hardness.  Clique parameterized by the size of the clique is W[1]-hard — no algorithm of the form f(k) · n^c is known.  This is the parameterized analog of NP-hardness.  W[1] ⊆ W[2] ⊆ ... ⊆ XP is the parameterized hardness hierarchy.
+The teaching for business planning is to look for the small parameter before treating an NP-hard problem as hopeless.  Real graphs often have small treewidth.  Real scheduling problems have few machines.  Real constraint systems have low interaction depth.  When you find the parameter, the work shrinks dramatically.
 
-In Rust, FPT algorithms are typically hand-rolled.  Branching, kernelization, tree decompositions — all bespoke.  \`petgraph\` provides the graph data structure; the algorithmics is yours.  For treewidth specifically, \`tree-decomposition\`-related crates exist but are sparse — this is an area where the Rust ecosystem lags Python's NetworkX.
+In Rust, parameterized algorithms are typically hand-rolled — the ecosystem for treewidth and kernelization is thinner than for SAT or MIP.  But the algorithms are usually short (branching plus bookkeeping) and the win is real.
 
-When your problem is NP-complete but has a small structural parameter, FPT is the right framework.  Look for it before reaching for SAT.`
+Hardness is not uniform.  Find the small dimension.  Exploit it.`
   },
   {
-    title: 'Metaheuristics — when nothing else fits',
-    tldr: 'Simulated annealing, tabu search, genetic algorithms.  No guarantees.  Often the right answer at scale.',
-    gesture: 'When the problem is non-convex, NP-hard, and not approximable, the last layer is heuristic search with no proof of quality.',
-    body: `Metaheuristics are general-purpose search frameworks for problems where exact methods, approximation algorithms, and structural parameterization all fail.  Simulated annealing (Kirkpatrick-Gelatt-Vecchi 1983) accepts worse moves with temperature-dependent probability, cooling gradually toward greedy.  Tabu search (Glover 1986) maintains a memory of recently visited states to escape local optima.  Genetic algorithms (Holland 1975) evolve a population of candidate solutions via selection, crossover, and mutation.  Large neighborhood search alternates destruction and repair.  Ant colony optimization, particle swarm, variable neighborhood search — each has a domain where it shines.  None come with worst-case guarantees on solution quality, but they routinely produce strong solutions on real instances.  In Rust, \`argmin\` provides a framework for several metaheuristics with custom problem traits.`,
-    citation: 'Kirkpatrick, S., Gelatt, C. D., Vecchi, M. P. (1983). *Optimization by Simulated Annealing.* Science 220(4598).  Glover, F. (1986). *Future Paths for Integer Programming and Links to Artificial Intelligence.* Computers & OR 13(5).',
+    title: 'When everything else fails — heuristics',
+    tldr: 'When exact solvers are too slow, approximations are too loose, and parameterization does not apply, you reach for heuristic search.  No guarantees, but often the right answer.',
+    gesture: 'The last layer: search frameworks with no quality bounds, frequently the most useful at production scale.',
+    body: `When exact methods fail, approximations are too loose, and parameterized algorithms do not apply, the last layer is heuristic search.  Simulated annealing accepts worsening moves with temperature-dependent probability, cooling toward greedy.  Tabu search maintains a memory of recently visited solutions to force exploration.  Genetic algorithms evolve populations.  Large neighborhood search alternates destruction and repair.  None come with worst-case quality guarantees.  All routinely produce strong solutions on real instances when nothing else fits.  Modern vehicle-routing solvers are heuristic-based.  Modern scheduling SaaS like OptaPlanner combine heuristics with constraint solvers.  Rust's argmin library provides a framework for several gradient-free methods.  At this layer of the stack, you are doing engineering, not theory.  Measure on representative instances.  Tune the parameters.  Accept that the work is empirical.`,
+    citation: 'Kirkpatrick, Gelatt, Vecchi (1983) simulated annealing.  Glover, F. (1986) tabu search.',
     link: 'https://docs.rs/argmin/latest/argmin/',
-    eli5: `Metaheuristics are the last layer of the optimization stack.  When exact methods (Held-Karp, ILP) are too slow, approximation algorithms have ratios too loose, FPT does not apply, and the problem is too unstructured for specialized algorithms, you reach for heuristic search.
+    eli5: `When exact methods are too slow, approximation algorithms have ratios too loose, parameterized complexity does not apply, and the problem is too unstructured for specialized algorithms, you reach for heuristic search.  This is the bottom layer of the optimization toolkit, the place where engineers admit there is no theoretical bound on solution quality and just measure performance on real inputs.
 
-Simulated annealing imitates the physical process of cooling a metal.  Start at high temperature: accept any neighboring solution, including worse ones.  Cool gradually: become more selective.  At low temperature: behave like greedy descent.  The schedule of cooling is the art.  Original applications were VLSI layout and TSP.  Convergence to global optima is asymptotic and useless in practice — the value is empirical performance on real instances.
+The classics:
 
-Tabu search keeps a list of recently visited solutions and forbids returning to them, forcing the search to explore.  Aspiration criteria allow forbidden moves when they would improve the global best.  Tabu search is the workhorse of operations research for scheduling and routing.
+Simulated annealing imitates the physical process of cooling a metal.  Start at high temperature, accept any neighboring solution including worse ones.  Cool gradually, become more selective.  At low temperature, behave like greedy descent.  The cooling schedule is the art.  Originally applied to VLSI layout and TSP; now used across operations research.
 
-Genetic algorithms encode candidate solutions as chromosomes.  Selection picks parents based on fitness.  Crossover combines parents into offspring.  Mutation introduces variation.  Repeat.  The metaphor is overstated — most successful "genetic algorithms" are essentially stochastic local search with a population — but the framework is useful when the encoding has natural recombination structure.
+Tabu search keeps a list of recently visited solutions and forbids returning to them, forcing the search to explore beyond local optima.  Aspiration criteria allow forbidden moves when they would improve the global best.  Tabu search is the production workhorse for many scheduling and routing systems.
 
-Large neighborhood search (LNS) is a different beast.  Take a current solution.  Destroy a piece of it.  Repair the destroyed piece with an exact or heuristic subroutine.  Iterate.  LNS shines when the subproblem is small enough for exact methods.  Modern vehicle routing solvers are LNS-based.
+Genetic algorithms encode candidate solutions as "chromosomes," select parents by fitness, combine them by crossover, mutate, and iterate.  The biological metaphor is overstated; most successful genetic algorithms are essentially stochastic local search with a population.
 
-In Rust, the \`argmin\` crate provides a framework for several gradient-free methods.  Define your problem by implementing a trait that exposes the objective and a way to mutate solutions.  Pick a solver — simulated annealing, particle swarm — and run.  For very specific metaheuristics, hand-rolling is the norm; the algorithms are short and the customization needed is usually problem-specific.
+Large neighborhood search (LNS) is the modern workhorse for vehicle routing.  Take a current solution, destroy a piece of it (remove a subset of routes), repair the destroyed piece with an exact or heuristic subroutine, iterate.  When the destroy-and-repair subproblem is small enough for exact methods, LNS combines the best of both worlds.  Production VRP solvers like Vroom and OR-Tools are LNS-based.
 
-The honest reality: at the very limit of NP-hard practice, you are doing engineering, not theory.  No bounds.  No proofs.  Just measurements on real instances.  The Hard Way is to admit it.`
+In Rust, the argmin library provides a framework for several gradient-free methods including simulated annealing and particle swarm.  For specific metaheuristics tailored to your problem, hand-rolling is common — the algorithms are short and the customization needed is usually problem-specific.
+
+The honest reality at this layer: you are doing engineering, not theory.  Bounds do not exist.  Quality is an empirical question.  The pattern that works is to set up a benchmark of representative real instances, try several methods, tune parameters, measure, ship the best.
+
+When a problem has gone past every theoretical category — past exact, past approximation, past parameterization — accept that you are in the engineering layer and plan accordingly.  This is where most production optimization actually lives.`
   },
 
-  // ─────────── Part V — The diagnostic spine ───────────
+  // ─────────── Part V — The diagnostic, in a meeting ───────────
   {
-    title: 'Is this in P?  A checklist',
-    tldr: 'Greedy?  Matroid?  DP with polynomial state?  Flow?  2-SAT?  LP?  Convex?  Then it is in P.',
-    gesture: 'Before you reach for a SAT solver, run the checklist.  Half the time the problem is already in P.',
-    body: `When facing a new optimization or decision problem, run through structural tests for membership in P.  Greedy with exchange argument — does picking the best local choice provably lead to optimal?  Matroid structure — does the problem fit the matroid framework (Edmonds 1971), which guarantees greedy works?  Dynamic programming — is there a polynomial-sized state space with a polynomial-time recurrence?  Network flow reduction — can the problem be expressed as max-flow or min-cost flow?  2-SAT — do the constraints have width-2 structure?  Linear programming — are constraints and objective linear with continuous variables?  Convexity — is the objective convex and the feasible set convex?  Spectral or linear algebra — does the problem reduce to eigenvalues or matrix factorization?  If any test passes, the problem is in P and a named algorithm exists.`,
-    citation: 'Cormen, T. H., Leiserson, C. E., Rivest, R. L., Stein, C. (2009). *Introduction to Algorithms,* 3rd ed.  Schrijver, A. (2003). *Combinatorial Optimization: Polyhedra and Efficiency.* Springer.',
+    title: 'Is this in the cheap category — a checklist',
+    tldr: 'Six structural tests.  If any passes, your problem is in the cheap category and a library exists.  Run them before sizing the work.',
+    gesture: 'Before you size an engineering effort, run the six tests.  Half the time the problem is already solved.',
+    body: `Six structural tests determine whether a problem is in the cheap category.  Greedy with exchange argument — does picking the best local choice provably lead to optimal?  (Many sorting, scheduling, allocation problems.)  Dynamic programming — is there a small set of subproblems that combine into the answer?  (Most counting, optimization, alignment problems.)  Network flow — does the problem reduce to "maximum flow through a network with capacities"?  (Many matching, allocation, partition problems.)  Two-piece constraints — are all the constraints expressible as "if X then Y" with exactly two variables?  (Many configuration, scheduling problems.)  Linear programming — are constraints and objective linear with continuous variables?  (Most operational planning.)  Linear algebra — does the problem reduce to matrix factorization, eigenvalues, or linear systems?  (Many ranking, recommendation, signal processing problems.)  If any test passes, you have a settled problem and a library.  Run the checklist in the meeting.`,
+    citation: 'Cormen, Leiserson, Rivest, Stein (2009) *Introduction to Algorithms.*',
     link: 'https://github.com/andygauge',
-    eli5: `The trap that triggered this book — reaching for NP-complete tools on P problems — has a counter: a checklist.  Before treating a problem as hard, run through structural patterns that put problems in P.
+    eli5: `The trap that motivated this book is reaching for hard-problem tools — SAT solvers, ILP modeling, heuristic search — on problems that are actually in the cheap category.  The counter is a checklist run at the planning stage.  Six structural tests cover most of the cheap category.
 
-Greedy with exchange argument.  Sort by some criterion, pick greedily, prove that any deviation from greedy can be swapped to match greedy without losing optimality.  Interval scheduling, fractional knapsack, Huffman coding, MST — all have this shape.
+Test one: greedy with exchange argument.  Can the problem be solved by sorting and picking in order?  Interval scheduling (maximize non-overlapping appointments), fractional knapsack, Huffman coding, minimum spanning tree, and dozens of others all have this shape.  If yes, the work is a sort plus a loop.  Days.
 
-Matroid.  A matroid is a set system with exchange properties — if A and B are independent sets and |A| > |B|, then B can be extended by an element of A.  When your problem's feasible sets form a matroid, the greedy algorithm (sort and pick) is provably optimal.  Edmonds 1971.  Forests in a graph form a matroid (giving Kruskal); linearly independent vectors form a matroid; transversals of bipartite graphs form a matroid.
+Test two: dynamic programming.  Is there a small set of subproblems whose answers combine into the answer?  Most counting problems, most optimization on sequences or DAGs, most alignment problems.  Edit distance, shortest path on DAGs, matrix chain multiplication, knapsack DP all fit.  If yes, the work is a table and a recurrence.  Days.
 
-Dynamic programming with polynomial state.  State space size is polynomial in the input.  Transition is polynomial-time.  Total work is polynomial.  Shortest path, edit distance, LCS, matrix chain, knapsack-when-W-is-poly all fit.
+Test three: network flow.  Can the problem be expressed as "maximize the amount that can flow from source to sink through a capacitated network"?  Many matching, allocation, partition, and assignment problems reduce to flow.  Bipartite matching, project selection, image segmentation, baseball elimination — all flow.  If yes, the work is to define the network and call the flow algorithm.  Days.
 
-Network flow.  When the problem reduces to "maximize flow through a capacitated network" or "minimize cost flow with demands," you are in P via Edmonds-Karp or specialized flow algorithms.  Bipartite matching, assignment, project selection, image segmentation, baseball elimination — all flow.
+Test four: two-piece constraints.  Are all the rules expressible as "if X then Y" with exactly two variables each?  Many configuration and scheduling problems have this shape.  If yes, the work is to build the implication graph and run strongly connected components.  Days.
 
-2-SAT.  Constraints of the form "if A then B" with two-literal clauses, decided by SCC in linear time.
+Test five: linear programming.  Are the constraints and objective all linear, and do the variables only need to be continuous?  Most operational planning, blending, transportation, portfolio allocation.  If yes, the work is to model in good_lp and call HiGHS.  Days.
 
-Linear programming.  Real-valued variables, linear constraints, linear objective.  Polynomial via ellipsoid or interior-point.  When the constraint matrix is totally unimodular, the LP optimum is integer for free.
+Test six: linear algebra.  Does the problem reduce to matrix factorization, eigenvalues, or solving a linear system?  PageRank, recommendation systems via matrix factorization, principal component analysis, spectral clustering.  If yes, the work is to set up the matrix and call nalgebra or faer.  Days.
 
-Convex optimization.  Objective and feasible set both convex.  Polynomial via interior-point.  Most regularized statistical estimators.
+If any test passes, you have a settled problem.  Reach for the library and ship.
 
-Spectral methods.  PageRank, spectral clustering, spectral graph theory.  Eigenvalues are polynomial.
-
-Linear algebra.  Matrix multiplication, inversion, factorization, least squares.  Polynomial.
-
-The procedure: read the problem, look for a structural match, name the class, name the algorithm, name the crate.  Half your problems will be solved by the third bullet point.
-
-The other half are NP-complete.  Page 38 helps you tell them apart.`
+If no test passes, you may be in the expensive category — see page 38 for the lookalikes that fool teams and page 39 for the common mistakes.`
   },
   {
-    title: 'The dividing-line pairs',
-    tldr: 'Eight pairs of look-alike problems — one in P, one NP-complete.  The single most useful page in this book.',
-    gesture: 'When the problem looks easy, check which side of the line it actually lives on.',
-    body: `Eight classic pairs separate P from NP-complete by a small specification change.  Euler circuit (P, every edge once, Hierholzer's algorithm) vs Hamiltonian circuit (NP-complete, every vertex once).  2-SAT (P, linear via SCC) vs 3-SAT (NP-complete).  2-coloring (P, bipartite check) vs 3-coloring (NP-complete).  Shortest path (P, Dijkstra) vs longest simple path (NP-complete).  Minimum spanning tree (P, Kruskal/Prim) vs Steiner tree (NP-complete, connect required subset).  Bipartite matching (P, Hopcroft-Karp) vs 3-dimensional matching (NP-complete).  Linear programming (P, interior-point) vs integer linear programming (NP-complete).  Fractional knapsack (P, greedy) vs 0/1 knapsack (NP-complete).  When a problem looks like one side, check that it is not actually the other.`,
-    citation: 'Karp, R. M. (1972). *Reducibility Among Combinatorial Problems.*  Garey, M. R., Johnson, D. S. (1979). *Computers and Intractability.*',
+    title: 'Eight twins — one cheap, one expensive',
+    tldr: 'Eight pairs of business problems that sound nearly identical.  In each pair, one twin is days; the other is a quarter.  This is the page to bookmark.',
+    gesture: 'The single most useful page in this book — eight lookalikes that distinguish "a sprint" from "a SaaS contract."',
+    body: `Eight pairs of problems sound nearly identical and live in different complexity classes.  Visit every link (cheap, Euler) vs visit every stop (expensive, Hamilton).  Two-piece constraints (cheap, 2-SAT) vs three-piece (expensive, 3-SAT).  Two categories (cheap, bipartite test) vs three or more (expensive, coloring).  Shortest path (cheap, Dijkstra) vs longest path that does not repeat (expensive).  Connect everything (cheap, MST) vs connect a subset using others as relays (expensive, Steiner tree).  Match two sides (cheap, bipartite matching) vs match three sides (expensive, 3D matching).  Linear programming (cheap) vs integer linear programming (expensive).  Take items in fractions (cheap, greedy by ratio) vs take items whole (expensive, 0/1 knapsack).  In every pair, the difference is one specification detail — and the engineering cost varies by an order of magnitude.  Read requirements carefully.`,
+    citation: 'Karp, R. (1972) *Reducibility Among Combinatorial Problems.*  Garey, M., Johnson, D. (1979) *Computers and Intractability.*',
     link: 'https://github.com/andygauge',
-    eli5: `These pairs are the spine of the diagnostic.  Each one is a near-mirror, where a single specification change moves a problem from P to NP-complete.  Memorize the pairs and your reflex will improve immediately.
+    eli5: `This is the page to bookmark.  Eight pairs of business problems that sound nearly identical and live in opposite complexity classes.  In each pair, one twin is a sprint; the other is a quarter (or a SaaS contract).
 
-**Euler vs Hamilton.**  Euler circuit visits every edge once and is decided by checking that every vertex has even degree — linear time.  Hamiltonian cycle visits every vertex once and is NP-complete.  The change: edges to vertices.
+**Visit every link versus visit every stop.**  Inspect every road segment — cheap, days.  Visit every customer in a territory — expensive, weeks at best with heuristics.  The difference: edges versus nodes.
 
-**2-SAT vs 3-SAT.**  Width-2 clauses give an implication graph whose SCC structure decides satisfiability in linear time.  Width-3 clauses do not collapse to any such structure and are NP-complete.  The change: clause width.
+**Two-piece rules versus three-piece rules.**  Every constraint involves exactly two variables — cheap, linear time.  Some constraint involves three or more — expensive, SAT solver.  The difference: rule width.
 
-**2-coloring vs 3-coloring.**  Two colors is bipartite testing, BFS-decidable in linear time.  Three or more colors is NP-complete.  The change: number of color classes.
+**Two categories versus three or more.**  Assign each item to one of two buckets with conflict constraints — cheap, bipartite test.  Three or more categories — expensive, NP-complete graph coloring.  The difference: bucket count.
 
-**Shortest path vs longest simple path.**  Shortest path on non-negative weighted graphs is Dijkstra, polynomial.  Longest simple path is NP-complete because it requires no-repeats and finding the longest no-repeat path is essentially Hamilton.  The change: max vs min.
+**Shortest versus longest.**  Shortest path with positive costs — cheap, Dijkstra.  Longest path without repeats — expensive, NP-complete.  The difference: min versus max with the no-repeat constraint.
 
-**MST vs Steiner tree.**  MST connects every vertex with minimum total weight, Kruskal or Prim, polynomial.  Steiner tree connects a specified subset of vertices (using others as relays if helpful) with minimum total weight, NP-complete.  The change: optional vertices.
+**Connect every location versus connect a subset using others as relays.**  Every location must be on the network — cheap, MST in days.  Only a subset must be connected, others optional — expensive, Steiner tree in weeks.  The difference: optional intermediate nodes.
 
-**Bipartite matching vs 3-D matching.**  Matching with two sides is Hopcroft-Karp, polynomial.  Three-dimensional matching (triples instead of pairs) is NP-complete.  The change: dimension.
+**Match two sides versus match three sides.**  Pair drivers with deliveries — cheap, Hopcroft-Karp.  Pair driver with delivery with time slot — expensive, 3D matching.  The difference: number of dimensions.
 
-**LP vs ILP.**  Linear programming with real variables is interior-point, polynomial.  Integer linear programming with integer variables is NP-complete.  The change: integrality.
+**Continuous values versus whole numbers.**  Plan with continuous quantities (money, hours, units in fractional amounts) — cheap, linear programming.  Plan with discrete decisions (build or not, hire or not, ship or not) — expensive, integer programming.  The difference: integrality.
 
-**Fractional vs 0/1 knapsack.**  Items can be cut: greedy by value/weight ratio, polynomial.  Items must be taken whole: NP-complete (weakly).  The change: divisibility.
+**Items in fractions versus items whole.**  Take 0.7 of this item and 0.3 of that — cheap, fractional knapsack greedy.  Take items as wholes only — expensive, 0/1 knapsack DP or ILP.  The difference: divisibility.
 
-The pattern across all eight: a continuity assumption (real values, two classes, two sides, edge-traversal, max one path) keeps the problem in P.  An integrality assumption (whole items, three classes, vertex-traversal, longest path) pushes it to NP-complete.  Continuity opens P.  Integrality closes it.
+The pattern across all eight is the same.  A continuity assumption — fractional values, two categories, two dimensions, every-node requirement, edge-traversal — keeps the problem in the cheap category.  An integrality or discreteness assumption — whole items, three or more categories, additional dimensions, subset-only requirements, vertex-traversal — pushes it into the expensive category.
 
-When your problem feels like one of the right-column problems, check whether you can model it as the left.  Often you can.  Often you have been needlessly heuristic.
+When a requirement feels like it belongs on the right side, check whether you can reframe it for the left side.  Often you can.  Often you have been needlessly heuristic.
 
-This is the page to bookmark.`
+Bookmark this page.  Run it in every planning meeting that involves an optimization problem.`
   },
   {
-    title: 'Common misidentifications',
-    tldr: 'Six patterns where you reach for the wrong class.  Each one is the trap this book exists to prevent.',
-    gesture: 'The traps cluster.  Six patterns cover almost every case where the wrong tool comes out first.',
-    body: `Six recurring misidentifications.  Treating shortest-path-with-non-negative-weights as NP-complete because the graph is large — Dijkstra is O((V+E)logV) and \`petgraph\` ships it.  Treating bipartite matching as NP-complete because the size is large — Hopcroft-Karp scales to millions of edges.  Treating LP as NP-complete because it has many variables — modern interior-point handles millions.  Treating 2-SAT or implication-style constraints as NP-complete — SCC is linear.  Treating problems on DAGs as NP-complete when the cycle-freeness collapses them to DP.  Treating any problem with a matroid structure as needing search when greedy is optimal.  In every case the fix is the same: name the structural property, look up the named algorithm, find the Rust crate.  See the page-37 checklist and the page-38 pairs.`,
-    citation: 'Schrijver, A. (2003). *Combinatorial Optimization: Polyhedra and Efficiency.*  Cormen, T. H. et al. (2009). *Introduction to Algorithms,* 3rd ed.',
+    title: 'Six places teams reach for the wrong category',
+    tldr: 'Six recurring patterns where engineers overestimate problem difficulty.  Each one is a place this book\'s thesis pays for itself.',
+    gesture: 'The six traps that cause teams to size a sprint as a quarter.  Read them; recognize the patterns; redirect the work.',
+    body: `Six recurring misidentifications.  Treating shortest-path-with-positive-costs as hard because the network is large — Dijkstra handles millions of nodes.  Treating bipartite matching as hard because the count is large — Hopcroft-Karp handles tens of thousands per second.  Treating linear programming as hard because there are many variables — HiGHS handles millions.  Treating two-piece constraint problems as SAT problems — they are linear-time via graph methods.  Treating problems on DAGs as if cycles were possible — the acyclic structure collapses many NP-hard problems to polynomial.  Treating problems with matroid structure as needing search when greedy is provably optimal.  In every case the fix is the same: name the structural property, look up the named algorithm, find the Rust crate.  See page 37 for the checklist and page 38 for the lookalikes.`,
+    citation: 'Schrijver, A. (2003) *Combinatorial Optimization: Polyhedra and Efficiency.*',
     link: 'https://github.com/andygauge',
-    eli5: `The dividing-line pairs (page 38) give you the structural difference between classes.  This page is the practical companion: the six places where, in your own code, you have most likely reached for the wrong class.
+    eli5: `This page is the mirror — the six places where, in your team's planning meetings, the wrong category has probably been chosen.
 
-**Misidentification one: large input means hard.**  No.  Input size is only one parameter.  Shortest-path on a graph with ten million edges is still Dijkstra, still O((V+E) log V).  \`petgraph\` and \`pathfinding\` handle this routinely.  Reach for a SAT solver only when the structure is genuinely combinatorial — not when the problem is just big.
+**Mistake one: big input means hard.**  No.  Input size is one parameter.  A shortest-path query over a network of ten million points is still Dijkstra, still a millisecond per query with the right data structure.  Reach for SAT or heuristics only when the structure is genuinely combinatorial — not when the problem is just big.
 
-**Misidentification two: bipartite matching looks like assignment which looks like ILP.**  Yes, the assignment problem can be modeled as ILP.  No, you do not need to use ILP.  Hopcroft-Karp for unweighted, Kuhn-Munkres (Hungarian) for weighted, both polynomial.  \`pathfinding::kuhn_munkres\` is the right crate.
+**Mistake two: matching looks like assignment looks like ILP.**  Yes, the assignment problem can be modeled as ILP.  No, you do not need ILP.  Bipartite matching is Hopcroft-Karp for unweighted and the Hungarian algorithm for weighted, both polynomial, both one library call in Rust's pathfinding.
 
-**Misidentification three: linear programming looks heavy.**  It is not.  HiGHS solves LPs with millions of variables in seconds.  When your problem has linear constraints and a linear objective with real-valued variables, model it as LP and dispatch to HiGHS via \`good_lp\`.  Do not search the solution space yourself.
+**Mistake three: linear programming sounds expensive.**  It is not.  HiGHS solves LPs with millions of variables in seconds.  When your problem has linear constraints and a linear objective with continuous variables, model it and dispatch.  Do not search the solution space yourself.
 
-**Misidentification four: implication constraints look like SAT.**  When clauses have width 2 — every constraint is "if X then Y" — you are in 2-SAT, decidable in linear time by SCC.  Do not encode in CNF and call \`splr\` for what \`petgraph::algo::tarjan_scc\` solves in linear time.
+**Mistake four: implication constraints look like SAT.**  When every constraint has the form "if X then Y" with two variables, you are in the 2-SAT category and the answer is linear time via strongly connected components on the implication graph.  Do not encode in CNF and call a SAT solver for what petgraph solves in fifty lines.
 
-**Misidentification five: cycles complicate everything.**  When your graph is a DAG, many NP-complete problems collapse to polynomial DP.  Topological sort plus dynamic programming over the order solves longest path on DAGs, counts paths, computes expected reward.  Confirm DAG-ness; do the DP.
+**Mistake five: cycles complicate everything.**  When your data is a DAG — build dependencies, workflow steps, version histories — many NP-hard problems collapse to polynomial dynamic programming on the topological order.  Confirm the acyclicity, then do the DP.
 
-**Misidentification six: greedy is a hack.**  When the underlying structure is a matroid — forests, bipartite transversals, linearly independent vectors — greedy is provably optimal.  Sort, pick, prove the matroid property.  No search needed.
+**Mistake six: greedy is a hack.**  When the underlying structure is a matroid — forests in a graph, bipartite transversals, linearly independent vectors — greedy is provably optimal.  Sort, pick, verify the matroid property.  No search needed.  MST is the textbook example.
 
-The common thread: the structural property determines the class.  Name the property and the class declares itself.  The crates are listed in the relevant Part II pages.
+The common thread across all six mistakes is the same.  The structural property of the problem determines the category, and the category determines the tool.  Name the property and the tool declares itself.  The crates are listed in the Part II pages.
 
-The book exists to make this reflex automatic.  Page 37 is the checklist.  Page 38 is the pairs.  This page is the mirror — what you have probably been doing wrong, in case any of it sounds familiar.
+This book exists to make this reflex automatic in planning meetings.  Page 37 is the checklist for "is this in the cheap category."  Page 38 is the lookalikes that fool experienced teams.  This page is the mirror — what your team has probably been doing wrong, in case any of it sounds familiar.
 
 Now do less.`
   }
