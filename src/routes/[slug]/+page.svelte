@@ -107,6 +107,20 @@
       <div class="body-text">{@html mdBlock(section.body, mdOpts)}</div>
     {/if}
 
+    {#if section.steps?.length}
+      <ol class="steps">
+        {#each section.steps as step, i (i)}
+          <li class="step">
+            <div class="step-marker" aria-hidden="true">{String(i + 1).padStart(2, '0')}</div>
+            <div class="step-prose">{@html md(step.prose, mdOpts)}</div>
+            {#if step.code}
+              <pre class="step-code"><code class="lang-{step.lang || 'rust'}">{step.code}</code></pre>
+            {/if}
+          </li>
+        {/each}
+      </ol>
+    {/if}
+
     {#if section.citation || section.link}
       <footer class="source">
         {#if section.citation}
@@ -275,6 +289,71 @@
   .body-text :global(p) { margin: 0 0 1.05em; }
   .body-text :global(p:last-child) { margin-bottom: 0; }
 
+  .steps {
+    grid-column: 2;
+    list-style: none;
+    margin: 1.8rem 0 0;
+    padding: 0;
+    max-width: 64ch;
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 2.4rem 1fr;
+    gap: 0.8rem 1rem;
+    align-items: start;
+    padding-left: 1.3rem;
+    border-left: 2px solid var(--rule);
+  }
+  .step:hover { border-left-color: var(--accent); }
+  .step-marker {
+    grid-column: 1;
+    grid-row: 1;
+    font-family: var(--sans);
+    font-size: 0.62rem;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    margin-top: 0.3rem;
+  }
+  .step-prose {
+    grid-column: 2;
+    grid-row: 1;
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 1rem;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+  .step-prose :global(p) { margin: 0; }
+  .step-prose :global(code) {
+    font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.88em;
+    background: rgba(20, 17, 13, 0.06);
+    padding: 0.05rem 0.3rem;
+    border-radius: 2px;
+  }
+  .step-code {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0.2rem 0 0;
+    padding: 0.9rem 1.1rem;
+    background: rgba(20, 17, 13, 0.04);
+    font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--ink);
+    overflow-x: auto;
+    white-space: pre;
+    -webkit-overflow-scrolling: touch;
+  }
+  .step-code code {
+    font-family: inherit;
+    background: transparent;
+    padding: 0;
+  }
+
   .source {
     grid-column: 2;
     margin-top: 1.4rem;
@@ -402,10 +481,12 @@
       gap: 2.5vw;
       padding: 1.5vw 0;
     }
-    .number, .title, .gesture, .body-text, .source, .eli5 {
+    .number, .title, .gesture, .body-text, .source, .eli5, .steps {
       grid-column: 1;
       max-width: none;
     }
+    .step { padding-left: 0.7rem; }
+    .step-code { font-size: 0.78rem; padding: 0.7rem 0.8rem; }
     .title, .gesture, .body-text, .cite, .eli5-body {
       overflow-wrap: break-word;
       word-break: break-word;

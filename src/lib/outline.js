@@ -15,6 +15,28 @@ const raw = [
   // ──────── Part I — The two classes that decide everything ────────
   {
     title: 'P and NP — the two classes',
+    steps: [
+      {
+        prose: `A Sudoku checker is the canonical P-class function — it scans the grid once and decides.  A solver is NP — searching for a valid grid is the expensive half.  In Rust both are short, but only the checker is fast.`,
+        code: `// O(n²) in the side length — the cheap half.
+fn is_valid_sudoku(grid: &[[u8; 9]; 9]) -> bool {
+    for i in 0..9 {
+        let (mut row, mut col, mut box_) = ([false; 9], [false; 9], [false; 9]);
+        for j in 0..9 {
+            let (r, c) = (grid[i][j], grid[j][i]);
+            let b = grid[(i / 3) * 3 + j / 3][(i % 3) * 3 + j % 3];
+            for (v, seen) in [(r, &mut row), (c, &mut col), (b, &mut box_)] {
+                if v == 0 { continue; }
+                if seen[(v - 1) as usize] { return false; }
+                seen[(v - 1) as usize] = true;
+            }
+        }
+    }
+    true
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Some problems are cheap to solve forever.  Some are cheap to check but expensive to solve.  The first kind is called P.  The second is NP.',
     gesture: 'Two categories of computing problem — and the line between them is the line that decides your engineering budget.',
     body: `Computing problems split into two categories that matter for every estimate your team makes.  Category one — known as P — covers problems with a known, fast solution.  Doubling the size of the input only multiplies the work by a predictable factor.  Routing, sorting, matching, scheduling on one machine — all in P.  Category two — known as NP — covers problems where, if someone hands you a candidate answer, you can verify it quickly, but finding the answer in the first place may take forever.  Sudoku is the everyday example.  Whether every NP problem is also in P is the most famous unsolved question in computer science.  The working assumption — and the basis of every engineering plan — is that the two are different.  Knowing which category a problem lives in determines whether the work is a week or a quarter.`,
@@ -32,6 +54,25 @@ The book is a field guide to telling them apart.`
   },
   {
     title: 'Checking is cheaper than building',
+    steps: [
+      {
+        prose: `A schedule checker is a tight loop over the constraints — one pass, no search.  Producing a valid schedule from the same constraints is the expensive half and would call a solver.  Same data, two complexity classes.`,
+        code: `struct Shift { staff: u32, start: u32, end: u32 }
+
+fn schedule_is_valid(shifts: &[Shift], min_gap: u32) -> bool {
+    let mut by_staff: std::collections::HashMap<u32, Vec<&Shift>> = Default::default();
+    for s in shifts { by_staff.entry(s.staff).or_default().push(s); }
+    for assignments in by_staff.values_mut() {
+        assignments.sort_by_key(|s| s.start);
+        for w in assignments.windows(2) {
+            if w[0].end + min_gap > w[1].start { return false; }
+        }
+    }
+    true
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'It is much easier to grade a finished answer than to produce one.  That asymmetry is where the entire field of "hard problems" lives.',
     gesture: 'The gap between verifying an answer and producing one is the whole reason consultants exist.',
     body: `Every NP problem shares a defining shape: somebody hands you a candidate answer, and you can check it in a reasonable amount of time.  Verifying that a delivery route hits every stop, that a schedule violates no rules, that a circuit design wires up correctly — all fast.  Producing the route, the schedule, the design in the first place can be vastly harder.  The asymmetry between checking and producing is where most of the difficulty in software engineering hides.  Build pipelines are checkers.  Test suites are checkers.  Code review is a checker.  The hard, slow, expensive work — the actual writing, planning, designing — is on the producing side.  When your team can describe a checker for a problem but cannot describe a producer, the problem is probably NP.  Treat the estimate accordingly.`,
@@ -49,6 +90,20 @@ Checking is cheap.  Building is the expensive half.  Estimate the half you are a
   },
   {
     title: 'Reducibility — turning one problem into another',
+    steps: [
+      {
+        prose: `Driver-to-delivery assignment is the canonical assignment problem in disguise.  The reduction is mechanical — build a cost matrix, hand it to a solver from \`pathfinding\`, read the matching back.  No new algorithm to write.`,
+        code: `use pathfinding::kuhn_munkres::kuhn_munkres_min;
+use pathfinding::matrix::Matrix;
+
+fn assign_drivers(miles: Vec<Vec<i32>>) -> Vec<usize> {
+    let m = Matrix::from_rows(miles).expect("rectangular");
+    let (_total, assignment) = kuhn_munkres_min(&m);
+    assignment // assignment[driver] = delivery
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'If you can rewrite Problem A as Problem B, then a solver for B is also a solver for A.  This is how engineers reuse other people\'s work.',
     gesture: 'The most leveraged move in engineering is recognizing your new problem is an old problem in disguise.',
     body: `A reduction is a translation from one problem to another such that solving the translated version solves the original.  If you can translate your problem into a known-solved problem cheaply, you inherit that problem's solution and never have to write your own.  This is the most leveraged move in engineering — and the most under-used one.  An assignment problem ("match drivers to deliveries minimizing total miles") is a reduction away from a published algorithm with a Rust library that handles thousands of items in milliseconds.  A constraint problem ("each shift must have at least two staff, no person works two shifts back-to-back") is a reduction away from a solver that the industry already built.  When your team faces a new problem, the first question is not "what should we build" — it is "what known problem is this in disguise."`,
@@ -66,6 +121,22 @@ The biggest cost savings come not from clever code but from recognizing you do n
   },
   {
     title: 'Hard, harder, hardest — the labels',
+    steps: [
+      {
+        prose: `An \`enum\` is the simplest way to make the labels a thing the codebase carries.  Tag each estimation function with its complexity class, and the procurement question — solver, approximation, or SaaS — falls out of the match arm.`,
+        code: `enum Complexity { P, NpComplete, NpHard, CoNp }
+
+fn procurement(problem: Complexity) -> &'static str {
+    match problem {
+        Complexity::P          => "use the standard library or crate",
+        Complexity::NpComplete => "encode and dispatch to a solver",
+        Complexity::NpHard     => "approximation or SaaS",
+        Complexity::CoNp       => "verifier finds bugs; certifier is the hard half",
+    }
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'NP-complete is "as hard as any NP problem."  NP-hard is "at least that hard, possibly worse."  Knowing the label tells you what to buy.',
     gesture: 'The vocabulary that separates "expensive but solvable" from "buy the SaaS instead."',
     body: `Four labels show up in engineering conversations about complexity.  P is the cheap category — fast algorithms exist.  NP-complete is the canonical hard category — every problem in it is as hard as every other, and no fast algorithm is known despite enormous effort.  NP-hard is at least that hard, and may be even harder.  Co-NP is the mirror — problems where catching a violation is easy but proving a clean bill of health is not (compliance auditing has this shape).  When a problem you face is labeled NP-complete, the right responses are: model it carefully and hand it to a commercial solver, settle for an approximation with a known quality bound, or buy a SaaS that handles it.  When a problem is labeled NP-hard but the optimization version, the same options apply with looser quality guarantees.`,
@@ -83,6 +154,23 @@ The labels are a vocabulary for procurement.  Learn them and the conversation ge
   },
   {
     title: 'What if the line collapsed',
+    steps: [
+      {
+        prose: `RSA is the most concrete bet on P ≠ NP.  The encryption is one multiplication; the inverse is factoring.  The Rust \`num-prime\` crate handles both halves and makes the asymmetry visible — primality test in microseconds, factoring of a 200-bit composite in minutes.`,
+        code: `use num_prime::nt_funcs::is_prime;
+use num_bigint::BigUint;
+
+fn rsa_modulus(p: &BigUint, q: &BigUint) -> BigUint {
+    assert!(is_prime(p, None).probably());
+    assert!(is_prime(q, None).probably());
+    p * q
+    // Recovering p, q from p*q alone is the bet.  No fast classical
+    // algorithm is known.  The day one is found, every RSA key on the
+    // internet is broken.
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'If P turned out to equal NP — if every hard problem were secretly easy — banking breaks, drug discovery becomes trivial, and most of operations research disappears overnight.',
     gesture: 'The unproven equality that, if proven, would rewire the entire economy in a week.',
     body: `The question P = NP asks whether every problem that is fast to check is also fast to solve.  The whole world is betting that the answer is no.  Every public-key cryptosystem (banking, messaging, identity, software updates) rests on the assumption that certain NP problems are genuinely hard.  Most of operations research, drug design, protein folding, and AI training would become trivial if the answer turned out to be yes.  Almost nobody believes that.  Decades of attacks on these problems have produced nothing, and the Clay Mathematics Institute will pay a million dollars to anyone who settles the question either way.  The practical implication for your engineering planning is this: do not bet on P = NP being true.  Treat NP-complete problems as hard, build accordingly, and reach for SaaS solvers or approximations rather than waiting for a breakthrough.`,
@@ -102,6 +190,23 @@ The day the equality flips, every contract gets renegotiated.  Until then, plan 
   // ──────── Part II — Problems that are already solved ────────
   {
     title: 'Sorting — almost never your problem',
+    steps: [
+      {
+        prose: `\`sort_unstable_by_key\` is the right default — faster than \`sort\` for most workloads, allocates nothing, and is what \`std\` ships.  Reach for \`rayon::par_sort_unstable_by\` when the slice is large enough that the parallel split pays for itself.`,
+        code: `use rayon::slice::ParallelSliceMut;
+
+struct Order { id: u64, price_cents: u64, placed_at: u64 }
+
+fn newest_first(orders: &mut [Order]) {
+    orders.sort_unstable_by_key(|o| std::cmp::Reverse(o.placed_at));
+}
+
+fn newest_first_parallel(orders: &mut [Order]) {
+    orders.par_sort_unstable_by_key(|o| std::cmp::Reverse(o.placed_at));
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Putting a list in order is solved.  Your engineers should reach for the standard library.  If they are writing their own sort, ask why.',
     gesture: 'The first problem any programmer learns, and one of the very few where the standard library is always the right answer.',
     body: `Sorting a list — by date, by price, by score, by any key — is one of the most studied problems in computing.  The standard library in every modern language ships an implementation that is faster than anything your team will write.  Rust's standard sort handles millions of items per second per core, is well-tested, and degrades gracefully on adversarial inputs.  When sorting becomes a performance question — typically only at the scale of billions of items — the answer is to use a specialized data layout (radix sort for fixed-width keys, external sort for data that does not fit in memory) or a database that does the work for you.  Almost no business has a sorting problem that is not already solved.  If a ticket on your roadmap is "implement custom sorting," ask whether the real ticket is something else.`,
@@ -121,6 +226,31 @@ You do not have a sorting problem.  You have a planning problem.`
   },
   {
     title: 'Traversing a network',
+    steps: [
+      {
+        prose: `Friends-of-friends within three hops — the textbook BFS.  \`petgraph\` exposes \`Bfs\` as a visitor you drive with a loop, so you can stop at any depth without writing the queue or the visited set yourself.`,
+        code: `use petgraph::graph::{NodeIndex, UnGraph};
+use petgraph::visit::{Bfs, Walker};
+
+fn friends_within(g: &UnGraph<&str, ()>, start: NodeIndex, hops: usize) -> Vec<NodeIndex> {
+    let mut bfs = Bfs::new(g, start);
+    let mut out = Vec::new();
+    let mut depth = vec![usize::MAX; g.node_count()];
+    depth[start.index()] = 0;
+    while let Some(n) = bfs.next(g) {
+        if depth[n.index()] > hops { continue; }
+        out.push(n);
+        for nbr in g.neighbors(n) {
+            if depth[nbr.index()] == usize::MAX {
+                depth[nbr.index()] = depth[n.index()] + 1;
+            }
+        }
+    }
+    out
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Walking through every connected item in a graph — friends-of-friends, dependencies, file trees — is one of the cheapest operations in computing.',
     gesture: 'Whenever the data shape is "things connected to other things," the operations are cheap.  Plan accordingly.',
     body: `Any time your data takes the shape of items connected to other items — a social graph, a dependency tree, an org chart, a file system, a workflow — the basic operations are cheap.  Visiting every connected item, finding the shortest chain between two items, detecting cycles, finding clusters — all run in time proportional to the number of items plus the number of connections.  No clever data structure or specialized solver is needed.  The Rust library petgraph implements every standard traversal as one function call.  When a feature request looks like "find everyone this person is connected to within three hops," the engineering estimate is a day.  When it looks like "tell me the most influential person in our network," the estimate may also be a day with the right algorithm (PageRank, see page 22).`,
@@ -142,6 +272,20 @@ When a graph problem feels expensive, the question to ask is whether you are doi
   },
   {
     title: 'Routing — the shortest path through a network',
+    steps: [
+      {
+        prose: `Build the road graph as a \`DiGraph\` with travel-minute edge weights, then call \`dijkstra\` once.  The return is a \`HashMap\` from each reachable intersection to the cheapest distance.  Sixty years of algorithms, four lines of glue.`,
+        code: `use petgraph::algo::dijkstra;
+use petgraph::graph::{DiGraph, NodeIndex};
+
+fn fastest_routes(road: &DiGraph<&str, u32>, from: NodeIndex)
+    -> std::collections::HashMap<NodeIndex, u32>
+{
+    dijkstra(road, from, None, |e| *e.weight())
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Finding the cheapest path from A to B in any kind of network is solved.  Every map app uses the same idea.  Your team should reach for the library.',
     gesture: 'Routing problems are a settled category — and one of the most common places engineering teams waste weeks reinventing the standard answer.',
     body: `Routing problems — given a network with costs on each link, find the cheapest path from one point to another — are completely solved when all costs are non-negative.  The algorithm is named for Edsger Dijkstra, who published it in 1959.  Every map application, every game pathfinder, every logistics platform uses it.  Cost grows roughly with the size of the network — a network ten times bigger takes about eleven times longer to route through.  Rust's petgraph and pathfinding libraries both implement it as a one-line call.  When your team estimates more than a day on a routing feature with non-negative costs, they are either solving a different problem (negative costs?  See page 09.  Multiple stops in any order?  Page 25) or they are not using the library.`,
@@ -161,6 +305,21 @@ But for plain "cheapest path from A to B" with positive costs, the answer is set
   },
   {
     title: 'Routing when paths can have negative costs',
+    steps: [
+      {
+        prose: `Currency arbitrage as a graph: each edge weight is \`-ln(rate)\`.  \`bellman_ford\` either returns the shortest-path table or signals a negative cycle — and the negative cycle is the arbitrage opportunity, not an error.`,
+        code: `use petgraph::algo::bellman_ford;
+use petgraph::graph::{DiGraph, NodeIndex};
+
+fn detect_arbitrage(fx: &DiGraph<&str, f32>, from: NodeIndex) -> Result<(), &'static str> {
+    match bellman_ford(fx, from) {
+        Ok(_paths) => Ok(()),
+        Err(_) => Err("negative cycle — arbitrage opportunity exists"),
+    }
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When some paths actually save money — currency arbitrage, refund flows, financial netting — the standard router fails.  A slower but still-cheap variant handles it.',
     gesture: 'Negative-cost paths break the standard router.  The fix is slower, but it stays cheap.',
     body: `Some routing problems involve paths with negative cost.  Currency exchange arbitrage is the classic example — a sequence of trades can return more than you started with, expressible as a negative-cost cycle in a graph.  Refund flows in finance, time-shifted scheduling where doing a task earlier saves money, and constraint systems where some inputs offset others all share this shape.  The standard shortest-path algorithm fails on negative costs — it can be tricked into committing to a path that looks short locally but is actually long.  The Bellman-Ford algorithm handles negative costs at a higher computational cost — work grows with the network size times the number of edges, not the logarithm of nodes.  It also detects when a negative-cost cycle exists, which is the signal for "your input data has an arbitrage opportunity."  Rust's petgraph implements it as a single function call.`,
@@ -182,6 +341,22 @@ When the standard router does not fit, the slower router does — and stays in t
   },
   {
     title: 'Distance from everywhere to everywhere',
+    steps: [
+      {
+        prose: `\`floyd_warshall\` fills the entire pair-wise distance table in one call.  On the petgraph API it returns a \`HashMap\` keyed by \`(NodeIndex, NodeIndex)\` — perfect for caching a delivery-zone travel matrix you precompute once and serve from forever.`,
+        code: `use petgraph::algo::floyd_warshall;
+use petgraph::graph::{DiGraph, NodeIndex};
+use std::collections::HashMap;
+
+fn travel_matrix(zones: &DiGraph<&str, u32>)
+    -> HashMap<(NodeIndex, NodeIndex), u32>
+{
+    floyd_warshall(zones, |e| *e.weight())
+        .expect("no negative cycles in travel times")
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When you need the distance from every point to every other point — not just one start — there is a one-page algorithm that handles it.',
     gesture: 'Three nested loops and a table.  When the network is small and you want every distance, this is the answer.',
     body: `Some questions require knowing the distance between every pair of points in a network, not just from one start.  Travel-time matrices for delivery planning.  Latency tables between data centers.  Reachability matrices for org charts.  The Floyd-Warshall algorithm fills the entire table at once and runs in time proportional to the cube of the number of points.  This sounds expensive but is competitive for networks up to about a thousand nodes — fast enough to recompute on demand for many business uses.  Rust's petgraph implements it directly.  When your network is larger than a few thousand nodes and you need all pairs, run the single-source router (Dijkstra) once per starting point in parallel instead.  When you need a few specific pairs, run it once per pair.`,
@@ -203,6 +378,19 @@ When the question is "every distance to every other place," the answer is in the
   },
   {
     title: 'Cheapest network that connects everything',
+    steps: [
+      {
+        prose: `\`min_spanning_tree\` returns the edges of the optimal tree as an iterator you can fold straight into a new graph.  For a fiber-rollout plan, the input is locations with cable costs and the output is the cheapest provably-complete network.`,
+        code: `use petgraph::algo::min_spanning_tree;
+use petgraph::data::FromElements;
+use petgraph::graph::UnGraph;
+
+fn cheapest_fiber(sites: &UnGraph<&str, u32>) -> UnGraph<&str, u32> {
+    UnGraph::from_elements(min_spanning_tree(sites))
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When you need to connect a set of locations with the minimum total wire, road, or cable, there is a greedy algorithm that finds the best answer guaranteed.',
     gesture: 'Connect every point with the cheapest wires that form no loop.  This is one of the few business problems where greedy is provably optimal.',
     body: `When you need to connect a set of points — fiber backbone, electrical grid, road network, communication mesh — with the minimum total length of cable or path, the problem is a minimum spanning tree.  Two algorithms find the exact best answer: sort all possible connections by cost and add them in order, skipping any that would form a redundant loop (Kruskal 1956); or grow a tree from any starting point, always adding the cheapest connection to a new point (Prim 1957).  Both are fast — work grows roughly with the number of possible connections.  Rust's petgraph has both.  When the problem changes to "connect this subset, using others as relays if it saves money," it becomes the Steiner tree problem and is genuinely hard (NP-complete, see page 38 for the contrast).  The line between cheap and expensive is whether every point must be connected or only a subset.`,
@@ -224,6 +412,19 @@ See page 38 for the cluster of "cheap twin vs expensive twin" pairs.  This is on
   },
   {
     title: 'Flow, capacity, and bottlenecks',
+    steps: [
+      {
+        prose: `Project-selection-under-budget reduces to max-flow: a source feeds each project's revenue, each project feeds its required resources, resources feed a sink with capacity equal to the budget.  Run \`ford_fulkerson\` once; the max flow is the optimal portfolio value.`,
+        code: `use petgraph::algo::ford_fulkerson;
+use petgraph::graph::{DiGraph, NodeIndex};
+
+fn max_throughput(network: &DiGraph<&str, u32>, source: NodeIndex, sink: NodeIndex) -> u32 {
+    let (flow, _flows) = ford_fulkerson(network, source, sink);
+    flow
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'How much water can flow through a network of pipes — and where the bottleneck is — is solved.  Many surprising business problems reduce to this.',
     gesture: 'Flow through a network is a polynomial problem.  Image segmentation, project selection, sports elimination, ad allocation — all secretly the same problem.',
     body: `The maximum-flow problem asks: given a network of pipes (or connections, or assignments, or commitments) with capacity on each, how much can flow from a source to a sink?  The companion question, minimum cut, asks: what is the cheapest set of connections to sever to disconnect them?  These two answers are always equal — a famous result from 1956.  Both are computable in polynomial time.  Many business problems that do not look like flow reduce to it: image segmentation in vision, project selection under budget, baseball elimination, advertising slot allocation, image matting, scheduling with resource constraints.  When a team recognizes a flow structure, the problem moves from intractable to a library call.  Rust's petgraph implements the standard flow algorithm.  For larger or more nuanced flow problems, modeling as linear programming (page 19) and calling HiGHS is the production approach.`,
@@ -243,6 +444,19 @@ Many of your hardest-looking problems are flow problems wearing different clothe
   },
   {
     title: 'Matching two sides',
+    steps: [
+      {
+        prose: `\`pathfinding::kuhn_munkres\` is the Hungarian algorithm in one call.  Feed it a square cost matrix — rows are workers, columns are jobs, cells are costs — and it returns the assignment that minimizes total cost.`,
+        code: `use pathfinding::kuhn_munkres::kuhn_munkres_min;
+use pathfinding::matrix::Matrix;
+
+fn assign_jobs(cost: Vec<Vec<i32>>) -> (i32, Vec<usize>) {
+    let m = Matrix::from_rows(cost).expect("square cost matrix");
+    kuhn_munkres_min(&m) // (total_cost, assignment[worker] = job)
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Pairing up applicants with jobs, drivers with deliveries, tutors with students — when there are two distinct sides, this is solved and fast.',
     gesture: 'Two-sided matching is a settled category.  Buy the algorithm.  Do not let your team build it.',
     body: `Matching problems with two distinct sides are completely solved.  Pairing job applicants with positions, drivers with deliveries, students with mentors, ads with slots — all bipartite matching.  Two questions arise: maximum matching (pair as many as possible) and assignment (find the pairing with the lowest total cost).  Both are polynomial.  Hopcroft-Karp handles unweighted matching at scale.  The Hungarian algorithm — also called Kuhn-Munkres — handles cost-minimizing assignment.  Rust's pathfinding library implements both as one-line calls and handles tens of thousands of items in milliseconds.  When the problem has more than two sides — for example, matching student to mentor to time slot all together — it becomes the three-dimensional matching problem and is genuinely hard (NP-complete, see page 38).  Two sides cheap, three sides expensive.`,
@@ -262,6 +476,21 @@ When you see "matching" in a requirement, the first question is how many sides. 
   },
   {
     title: 'Matching with no clean sides',
+    steps: [
+      {
+        prose: `Roommate pairing has no left/right split — any student can pair with any other.  petgraph's \`maximum_matching\` runs the blossom algorithm and returns the maximum set of disjoint pairs.`,
+        code: `use petgraph::algo::matching::maximum_matching;
+use petgraph::graph::UnGraph;
+
+fn roommate_pairs(compat: &UnGraph<&str, ()>) -> Vec<(&str, &str)> {
+    let m = maximum_matching(compat);
+    m.edges()
+        .map(|(a, b)| (compat[a], compat[b]))
+        .collect()
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When the matching has no natural left/right split — roommate assignment, peer-to-peer pairing — there is still a polynomial algorithm.  It is just harder.',
     gesture: 'Matching without a clean two-sided structure is still in the cheap category.  Surprising, and worth knowing.',
     body: `Some matching problems have no natural two-sided structure.  Assigning roommates to share spaces, pairing players in a tournament, matching peer-to-peer transactions — every participant could potentially match with every other.  These look harder than two-sided matching and historically were thought to be.  Jack Edmonds in 1965 proved otherwise — general matching is still polynomial, just with more complex machinery.  The blossom algorithm handles odd-length cycles in the matching graph that break simpler approaches.  Rust's petgraph implements maximum matching for general graphs.  When you see a matching problem and your first instinct is "this is just like the two-sided case but more flexible," that instinct is right — and the algorithm is in the library.  Three-dimensional and higher-dimensional matching remain hard; only the no-clean-sides two-dimensional case is in the cheap category.`,
@@ -281,6 +510,33 @@ The shape of the data matters more than the labels on the sides.  Two-way matchi
   },
   {
     title: 'Either-or constraints',
+    steps: [
+      {
+        prose: `2-SAT reduces to strongly-connected components on the implication graph.  Each clause \`(a ∨ b)\` becomes two implication edges (\`¬a → b\` and \`¬b → a\`).  A variable and its negation in the same SCC mean unsatisfiable — otherwise the SCC order gives a satisfying assignment.`,
+        code: `use petgraph::algo::tarjan_scc;
+use petgraph::graph::DiGraph;
+
+fn two_sat_feasible(n: usize, clauses: &[(i32, i32)]) -> bool {
+    let mut g = DiGraph::<(), ()>::new();
+    let nodes: Vec<_> = (0..2 * n).map(|_| g.add_node(())).collect();
+    let idx = |lit: i32| {
+        let v = lit.unsigned_abs() as usize - 1;
+        if lit > 0 { 2 * v } else { 2 * v + 1 }
+    };
+    for &(a, b) in clauses {
+        g.add_edge(nodes[idx(-a)], nodes[idx(b)], ());
+        g.add_edge(nodes[idx(-b)], nodes[idx(a)], ());
+    }
+    let sccs = tarjan_scc(&g);
+    let mut comp = vec![0usize; 2 * n];
+    for (i, c) in sccs.iter().enumerate() {
+        for &n in c { comp[n.index()] = i; }
+    }
+    (0..n).all(|v| comp[2 * v] != comp[2 * v + 1])
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When every rule in the system is "if A then B" — exactly two-piece constraints — there is a linear-time check whether the rules are satisfiable.',
     gesture: 'Two-piece logical constraints are in the cheap category.  Three-piece are not.  The boundary is sharp.',
     body: `Some constraint problems have the shape "for each rule, exactly one of two things must hold" — staff assignments where each shift has two possible covers, layout problems where each item must be in one of two positions, configuration problems with binary either-or rules.  These problems can be checked for feasibility in linear time by translating each rule into a logical implication and analyzing the resulting graph.  This is the 2-SAT problem and it is in the cheap category.  When the constraints have three or more pieces — for each rule, exactly one of three things must hold — the problem becomes 3-SAT and is NP-complete.  The line between two and three is the most famous complexity boundary in computer science.  When you see two-piece rules everywhere, you are in the cheap category and a 2-SAT model with the petgraph library handles it.`,
@@ -300,6 +556,18 @@ Two is cheap.  Three is expensive.  No middle ground.`
   },
   {
     title: 'Dependency order — when the graph has no cycles',
+    steps: [
+      {
+        prose: `petgraph's \`toposort\` returns the build order or an error pointing at a cycle.  Once you have the order, every NP-hard graph problem that becomes easy on DAGs — longest path, counting completions, critical path — is one linear scan over the sorted list.`,
+        code: `use petgraph::algo::toposort;
+use petgraph::graph::{DiGraph, NodeIndex};
+
+fn build_order(deps: &DiGraph<&str, ()>) -> Result<Vec<NodeIndex>, NodeIndex> {
+    toposort(deps, None).map_err(|cycle| cycle.node_id())
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When the data has no circular dependencies — build graphs, prerequisite chains, version histories — many problems collapse into one linear pass.',
     gesture: 'No cycles, no problem.  DAG-shaped data unlocks an enormous toolbox of fast algorithms.',
     body: `Directed acyclic graphs (DAGs) are the data shape of build systems, prerequisite chains, version histories, computation pipelines, and most workflow systems.  The defining property is "no cycles" — you can list the items in an order where every dependency comes before what depends on it.  Computing that order is linear time (topological sort).  And once you have it, an enormous range of problems that are hard on general graphs become trivial: longest paths, shortest paths with negative costs, counting completions, computing expected costs.  All linear passes over the topological order.  Rust's petgraph has topological sort as one call.  When your problem lives on a DAG, you are in the cheap category and your team should ship the feature in days.`,
@@ -319,6 +587,20 @@ Many production systems have hidden DAG structure that is not exploited.  When a
   },
   {
     title: 'Searching for text patterns',
+    steps: [
+      {
+        prose: `\`aho-corasick\` compiles a list of keywords into a single automaton, then scans a body of text in one pass.  Ideal for content moderation, spam filtering, intrusion detection — anywhere you need many needles in one haystack.`,
+        code: `use aho_corasick::AhoCorasick;
+
+fn flag(text: &str, banned: &[&str]) -> Vec<(usize, String)> {
+    let ac = AhoCorasick::new(banned).expect("valid patterns");
+    ac.find_iter(text)
+        .map(|m| (m.start(), banned[m.pattern()].to_string()))
+        .collect()
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Finding a needle in a haystack of text is solved.  Rust has industrial-grade libraries that scan gigabytes per second.',
     gesture: 'Pattern matching in text is a solved category.  Reach for the library; the library is faster than anything your team will write.',
     body: `Searching for patterns in text — substrings, regular expressions, dictionaries of keywords — is one of the most engineered problems in computing.  Industrial implementations scan gigabytes of text per second on a single CPU core.  The libraries handle every edge case — Unicode, multi-pattern, anchored, case-insensitive, with SIMD acceleration.  Rust's aho-corasick library handles multi-pattern matching (finding any of thousands of keywords in a body of text).  Rust's regex library handles regular expressions and is the fastest in widespread use.  Rust's memchr library handles single-byte and short-pattern scanning with SIMD.  Your team should never write their own pattern matcher.  The only flavor that is genuinely hard is regular expressions with backreferences (PCRE-style) — those can be made to run exponentially slow.  Rust's regex library deliberately excludes them.`,
@@ -338,6 +620,28 @@ When the requirement looks bigger than that, the work is somewhere else — in d
   },
   {
     title: 'How different are these two strings',
+    steps: [
+      {
+        prose: `\`strsim\` exposes every common edit-distance variant as a one-liner.  Levenshtein for spell check, Damerau-Levenshtein for typos that include swaps, Jaro-Winkler for name matching where the first few characters matter most.`,
+        code: `use strsim::{damerau_levenshtein, jaro_winkler, levenshtein};
+
+fn best_match<'a>(query: &str, candidates: &'a [&'a str]) -> Option<&'a str> {
+    candidates
+        .iter()
+        .min_by_key(|c| levenshtein(query, c))
+        .copied()
+}
+
+fn name_score(a: &str, b: &str) -> f64 {
+    jaro_winkler(a, b) // 1.0 = identical, 0.0 = no shared prefix
+}
+
+fn typo_distance(a: &str, b: &str) -> usize {
+    damerau_levenshtein(a, b) // counts adjacent swaps as one edit
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Edit distance — how many character changes between two strings — is solved by a single dynamic programming pass.  Spell check, diff, DNA alignment all use it.',
     gesture: 'Spell check, diff tools, DNA matching, fuzzy search — all the same algorithm, all polynomial.',
     body: `The edit distance between two strings is the number of character insertions, deletions, or substitutions to transform one into the other.  It is the standard measure of string similarity and the foundation of spell checkers, diff tools, fuzzy search, plagiarism detection, and DNA sequence alignment.  The algorithm is a textbook dynamic programming routine that runs in time proportional to the product of the two string lengths.  Rust's strsim library implements Levenshtein distance, Damerau-Levenshtein (adds transposition), Jaro-Winkler (weights early matches more), and several other common variants as one-line calls.  For very long sequences (DNA), the work scales as a square of the length and becomes expensive — specialized libraries with diagonal-band optimization handle it.  For short strings (names, addresses, search queries), the work is microseconds and your team should reach for the library.`,
@@ -357,6 +661,24 @@ The similarity computation is solved.  Reach for it and move on.`
   },
   {
     title: 'Optimization with continuous numbers',
+    steps: [
+      {
+        prose: `\`good_lp\` lets your team model the LP in code — variables with bounds, linear constraints with operator overloading, an objective — and dispatch to a backend solver.  HiGHS is the recommended open-source backend; the model below is a diet problem in three lines of math.`,
+        code: `use good_lp::{constraint, default_solver, variables, SolverModel, Solution};
+
+fn cheapest_diet() -> (f64, f64, f64) {
+    variables! { vars: 0 <= bread; 0 <= rice; 0 <= eggs; }
+    let model = vars
+        .minimise(2.0 * bread + 1.5 * rice + 3.0 * eggs) // dollars
+        .using(default_solver)
+        .with(constraint!(80.0 * bread + 130.0 * rice + 70.0 * eggs >= 2000.0))
+        .with(constraint!( 3.0 * bread +   2.0 * rice + 13.0 * eggs >= 50.0));
+    let sol = model.solve().expect("feasible");
+    (sol.value(bread), sol.value(rice), sol.value(eggs))
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When the variables can be any real number — money, quantity, percentage — and the constraints are linear, the problem is solved at industrial scale.',
     gesture: 'Real-valued optimization with linear constraints is in the cheap category — even at millions of variables.  Buy or open-source the solver.',
     body: `Linear programming covers an enormous fraction of business optimization.  Variables are continuous (money, hours, units of inventory).  Constraints and objective are linear (budget caps, capacity limits, sum-to-one).  Modern solvers — HiGHS (open source), Gurobi, CPLEX — handle millions of variables in seconds.  Diet planning, blending problems, transportation problems, scheduling relaxations, network flow at scale, portfolio allocation, blending ad targeting — all linear programs.  Rust's good_lp library lets your team model the problem in code (define variables, add constraints, set objective) and dispatch to a backend solver.  HiGHS is the recommended open-source backend.  When some variables must be integer (page 32), the problem moves to the expensive category.  When the variables are continuous, the work is industrial and your team should not be writing their own solver.`,
@@ -376,6 +698,21 @@ When your problem has linear constraints and continuous variables, you have a so
   },
   {
     title: 'Optimization with curves instead of lines',
+    steps: [
+      {
+        prose: `Ridge regression is the easiest convex problem to recognize — a quadratic loss plus an L2 penalty.  The closed-form solution is one linear-system solve; \`nalgebra\` handles it.  For larger problems the same setup goes to \`argmin\` or \`clarabel\` without any change of shape.`,
+        code: `use nalgebra::{DMatrix, DVector};
+
+fn ridge(x: &DMatrix<f64>, y: &DVector<f64>, lambda: f64) -> DVector<f64> {
+    let n = x.ncols();
+    let xt = x.transpose();
+    let a = &xt * x + DMatrix::identity(n, n) * lambda;
+    let b = xt * y;
+    a.lu().solve(&b).expect("ridge is always solvable for lambda > 0")
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When the objective is curved (cost of risk grows faster than linearly) and the feasible set is well-behaved, the problem is still in the cheap category.',
     gesture: 'Convex optimization is the broadest class of optimization that stays in the cheap category.  Most machine learning training fits here.',
     body: `Convex optimization extends linear programming with curved objectives, as long as the curve goes the right way.  "Convex" means the objective looks like a bowl — every local minimum is the global minimum.  This structure makes the problem solvable in polynomial time, even when the objective is not linear.  Most regularized statistical models (ridge regression, lasso, support vector machines, logistic regression) are convex.  Portfolio optimization with risk penalties is convex.  Many control problems are convex.  Rust's clarabel library is a production-grade convex solver.  When the problem is convex, the engineering estimate is days.  When the problem is non-convex (most deep learning training), the toolkit changes to heuristics with no global guarantees.  Knowing whether your objective is convex changes the engineering plan.`,
@@ -397,6 +734,22 @@ Convexity is the structural property that buys you tractability.  Confirm it bef
   },
   {
     title: 'Is this number prime',
+    steps: [
+      {
+        prose: `\`num-prime\` gives you Miller-Rabin (probabilistic, fast) and Baillie-PSW (no known counterexamples) as one call.  The same crate exposes \`factorize\` for the hard direction — and the contrast in runtime between the two is exactly the gap that secures the internet.`,
+        code: `use num_bigint::BigUint;
+use num_prime::nt_funcs::{is_prime, factorize};
+
+fn prime_check(n: &BigUint) -> bool {
+    is_prime(n, None).probably() // microseconds, even at 4096 bits
+}
+
+fn try_factor(n: &BigUint) -> std::collections::BTreeMap<BigUint, usize> {
+    factorize(n.clone()) // fast for small n, infeasible for cryptographic n
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Testing whether a number is prime is solved.  Factoring large numbers is not — that asymmetry is the basis of every public-key cryptosystem.',
     gesture: 'Primality testing is cheap.  Factoring is expensive.  Most of internet security rides on the gap between them.',
     body: `Testing whether a number is prime is in the cheap category.  Both probabilistic methods (Miller-Rabin, extremely fast, vanishingly small error rate) and deterministic methods (the AKS algorithm, proved to be polynomial in 2002) exist.  Rust's num-prime library exposes both as one-line calls and handles arbitrary-precision integers.  Factoring a composite number into its prime factors is, in contrast, conjectured to be genuinely hard for large numbers.  This asymmetry — primality is easy, factoring is hard — is the basis of RSA encryption, which secures most of the internet.  The day a polynomial-time factoring algorithm is found is the day RSA dies and the entire payment and identity infrastructure needs to be replaced.  Quantum computers (Shor's algorithm) could in principle factor in polynomial time, but no quantum computer large enough exists yet.`,
@@ -418,6 +771,23 @@ Cheap to check.  Expensive to break.  That gap is the foundation.`
   },
   {
     title: 'When the answer is a matrix',
+    steps: [
+      {
+        prose: `PageRank in twenty lines of \`nalgebra\` — build the column-stochastic transition matrix, run power iteration, return the dominant eigenvector.  The same shape solves spectral clustering, recommendation scoring, and influence ranking.`,
+        code: `use nalgebra::{DMatrix, DVector};
+
+fn pagerank(links: &DMatrix<f64>, damping: f64, iterations: usize) -> DVector<f64> {
+    let n = links.ncols();
+    let teleport = DVector::from_element(n, (1.0 - damping) / n as f64);
+    let mut r = DVector::from_element(n, 1.0 / n as f64);
+    for _ in 0..iterations {
+        r = links * (&r * damping) + &teleport;
+    }
+    r
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'PageRank, recommendation systems, search ranking, image compression — all secretly matrix problems.  All solvable with off-the-shelf libraries.',
     gesture: 'When the problem has a matrix at its heart, the answer is in the linear algebra library — and the work is cheap.',
     body: `Many business problems that look combinatorial collapse into a matrix computation once the structure is spotted.  Google's PageRank ranks web pages as the principal eigenvector of a link-graph matrix.  Recommendation systems use matrix factorization to predict missing entries in a user-item matrix.  Search ranking, image compression (JPEG, SVD), principal component analysis, spectral clustering, network centrality — all matrix operations.  Linear algebra is in the cheap category.  Matrix multiplication, eigenvalue computation, matrix factorization all run in polynomial time, and Rust has multiple production-grade libraries — nalgebra for general use, faer for high-performance dense problems, ndarray for NumPy-like array operations.  When a problem can be expressed in matrix form, the engineering work is in the data preparation, not the computation.`,
@@ -441,6 +811,23 @@ Reach for the matrix.  The library does the rest.`
   // ────────── Part III — Problems that are genuinely hard ──────────
   {
     title: 'Boolean satisfiability — the original hard problem',
+    steps: [
+      {
+        prose: `\`splr\` accepts CNF as a \`Vec<Vec<i32>>\` — positive integers are variables, negatives are negations.  The solver returns a satisfying assignment or \`UNSAT\`.  Encode your configuration validator this way and let three decades of CDCL engineering do the search.`,
+        code: `use splr::*;
+
+fn satisfy(clauses: Vec<Vec<i32>>) -> Option<Vec<i32>> {
+    let mut solver = Solver::try_from((SolverConfig::default(), clauses.as_ref()))
+        .expect("valid CNF");
+    match solver.solve() {
+        Ok(Certificate::SAT(assignment)) => Some(assignment),
+        Ok(Certificate::UNSAT) => None,
+        Err(_) => None,
+    }
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'SAT is the canonical hard problem.  But modern industrial solvers crack million-variable instances in seconds.  Use one; do not write one.',
     gesture: 'SAT is famously hard.  Industrial solvers are famously good.  The right move is to encode and dispatch.',
     body: `Boolean satisfiability — does this logical formula have a true assignment — was the first problem proven NP-complete (Cook, 1971).  Every other NP-complete problem reduces to it.  By every theoretical measure, SAT is hard.  And yet modern industrial SAT solvers routinely handle instances with millions of variables in seconds.  The trick is conflict-driven clause learning (CDCL), a search strategy that learns from each dead-end and prunes the future search aggressively.  Modern SAT solvers are the product of three decades of competitive benchmarking and engineering refinement.  For business problems that can be encoded as logical constraints — scheduling, configuration, verification, planning — the right path is to encode in standard format (DIMACS) and call a solver.  Rust has splr (pure Rust) and varisat.  For maximum performance, the C++ solver CaDiCaL via FFI is hard to beat.`,
@@ -460,6 +847,23 @@ The teaching: "NP-complete in theory" and "tractable in practice with the right 
   },
   {
     title: 'Why three variables per rule changes everything',
+    steps: [
+      {
+        prose: `Three-piece clauses look one character longer in the encoding and live in a different complexity class.  Same crate, same call — the worst-case runtime is the only thing that changed.  In practice splr still cracks most real instances in seconds.`,
+        code: `use splr::*;
+
+// 3-SAT clauses — three literals each.  NP-complete in the worst case.
+fn three_sat(clauses: Vec<[i32; 3]>) -> Option<Vec<i32>> {
+    let cnf: Vec<Vec<i32>> = clauses.into_iter().map(|c| c.to_vec()).collect();
+    let mut s = Solver::try_from((SolverConfig::default(), cnf.as_ref())).ok()?;
+    match s.solve().ok()? {
+        Certificate::SAT(a) => Some(a),
+        Certificate::UNSAT => None,
+    }
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Two-variable constraints are cheap.  Three-variable constraints are NP-complete.  The same SAT solver handles both — but the cost picture changes.',
     gesture: 'The boundary between cheap and hard constraint problems is at three variables per rule.  Knowing this saves the wrong estimate.',
     body: `When every rule in a logical constraint system involves exactly two variables, the system can be checked for satisfiability in linear time using a graph-based technique (page 15).  When some rule involves three or more variables, the problem becomes 3-SAT and is NP-complete — the same complexity class as every other hard problem.  The transition from two to three is the sharpest complexity boundary in computer science.  In practice, modern SAT solvers handle both flavors with the same machinery and often the same speed on real inputs — but the worst-case picture is dramatically different.  For planning purposes, the question to ask is whether the constraints genuinely require three or more variables per rule.  If they do, accept that the problem is in the expensive category and budget for a solver.  If they do not, model it as 2-SAT and stay in the cheap category.`,
@@ -483,6 +887,31 @@ Three variables is the cliff.  Watch for it in requirements.`
   },
   {
     title: 'Traveling Salesman — the poster problem',
+    steps: [
+      {
+        prose: `Held-Karp dynamic programming for up to about twenty cities — bitmask the visited set, memoize on (last-city, set).  The work is \`n² · 2ⁿ\`, fast for n ≤ 20 and infeasible beyond.  Past that, switch to LKH via FFI or hand the problem to Vroom.`,
+        code: `fn tsp_held_karp(dist: &[Vec<u32>]) -> u32 {
+    let n = dist.len();
+    assert!(n <= 20, "use LKH or a SaaS for n > 20");
+    let mut dp = vec![vec![u32::MAX; n]; 1 << n];
+    dp[1][0] = 0;
+    for mask in 1u32..(1 << n) {
+        for last in 0..n {
+            if (mask >> last) & 1 == 0 || dp[mask as usize][last] == u32::MAX { continue; }
+            for next in 0..n {
+                if (mask >> next) & 1 == 1 { continue; }
+                let m = (mask | (1 << next)) as usize;
+                let cand = dp[mask as usize][last].saturating_add(dist[last][next]);
+                if cand < dp[m][next] { dp[m][next] = cand; }
+            }
+        }
+    }
+    let full = (1 << n) - 1;
+    (1..n).map(|i| dp[full][i].saturating_add(dist[i][0])).min().unwrap()
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Visit every location once and return — the famous hard problem.  Exact answers for small N, approximations for medium, SaaS for production.',
     gesture: 'The most famous NP-complete problem in the world.  Real solvers are mature; build them yourself only if you have a reason.',
     body: `The Traveling Salesman Problem (TSP) asks for the shortest tour visiting every location once.  It is the most famous NP-complete problem and the workhorse of vehicle routing, circuit board drilling, DNA sequencing, and many other domains.  For small instances (up to about twenty locations), exact algorithms (Held-Karp 1962) find the optimal answer in seconds.  For metric TSP (distances satisfy the triangle inequality), Christofides' 1976 algorithm produces a solution within 50% of optimal in polynomial time.  In practice, the heuristic Lin-Kernighan and its descendants (the LKH solver) get within a fraction of a percent of optimal on instances with thousands of cities.  The state-of-the-art commercial solver Concorde has cracked exact-optimal tours on instances with tens of thousands of cities.  For business use, the right move is almost always to call an existing solver or use a SaaS (Vroom, OptaPlanner) rather than build from scratch.`,
@@ -504,6 +933,26 @@ The problem is hard.  The tools are good.  Use the tools.`
   },
   {
     title: 'Knapsack — which items fit in the budget',
+    steps: [
+      {
+        prose: `The classic DP runs in \`O(items · budget)\` — fast whenever the budget is a small integer.  For an engineering portfolio of a hundred features and a budget in story points, this is microseconds.  Reach for \`good_lp\` when the budget is huge.`,
+        code: `fn knapsack(weights: &[u32], values: &[u32], capacity: u32) -> u32 {
+    let n = weights.len();
+    let cap = capacity as usize;
+    let mut dp = vec![0u32; cap + 1];
+    for i in 0..n {
+        let w = weights[i] as usize;
+        let v = values[i];
+        if w > cap { continue; }
+        for c in (w..=cap).rev() {
+            dp[c] = dp[c].max(dp[c - w] + v);
+        }
+    }
+    dp[cap]
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Picking the best subset of items within a budget is technically NP-complete but practically tractable — solvable by dynamic programming when budgets are reasonable.',
     gesture: 'Knapsack is NP-complete but practically cheap when the numbers are small.  One of the friendliest hard problems.',
     body: `The 0/1 knapsack problem: given items each with weight and value and a budget, pick the subset that maximizes value without exceeding budget.  Engineering portfolio selection, ad slot allocation, feature shipping under engineering budget, asset selection for a fund — all knapsack.  Classified as NP-complete (Karp 1972), but with a critical practical caveat: the dynamic programming solution runs in time proportional to the number of items times the budget value.  When the budget is small (hundreds or thousands), this is microseconds.  When the budget is cryptographically large, the same algorithm is infeasible.  This is called "weakly NP-complete" — hard in the worst case but tractable for typical business inputs.  Knapsack also has a fully polynomial-time approximation scheme: a tunable knob trading speed for closeness to optimal.  In Rust, hand-roll the DP for exact answers or use good_lp for the integer programming formulation.`,
@@ -527,6 +976,26 @@ When the budget is huge, the problem really is expensive.  When the budget is re
   },
   {
     title: 'Picking the right subset under constraints',
+    steps: [
+      {
+        prose: `Model minimum vertex cover as an ILP — a binary variable per node, a constraint per edge requiring at least one endpoint covered, an objective summing the variables.  Dispatch to HiGHS via \`good_lp\`.  Exact answers on graphs with thousands of nodes in seconds.`,
+        code: `use good_lp::{constraint, default_solver, ProblemVariables, SolverModel, Solution, variable};
+
+fn min_vertex_cover(n: usize, edges: &[(usize, usize)]) -> Vec<usize> {
+    let mut vars = ProblemVariables::new();
+    let x: Vec<_> = (0..n).map(|_| vars.add(variable().binary())).collect();
+    let mut model = vars
+        .minimise(x.iter().sum::<good_lp::Expression>())
+        .using(default_solver);
+    for &(u, v) in edges {
+        model = model.with(constraint!(x[u] + x[v] >= 1));
+    }
+    let sol = model.solve().expect("ILP solved");
+    (0..n).filter(|&i| sol.value(x[i]) > 0.5).collect()
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Choosing a minimum (or maximum) subset that meets some structural requirement is the cluster of vertex cover, independent set, and clique — all NP-complete and all secretly the same problem.',
     gesture: 'Three of the most-cited NP-complete problems are actually the same coin viewed from three angles.',
     body: `Three classic NP-complete problems show up in business in slightly different forms.  Vertex cover: pick the minimum-size set of items that "touches" every relation.  Independent set: pick the maximum-size set with no relations among them.  Clique: pick the maximum-size set where every pair is related.  All three are equivalent — solving one solves the others.  Use cases include minimum-staff coverage (vertex cover), fraud-ring detection (clique), conflict-free scheduling (independent set), security policy auditing (vertex cover).  All NP-complete.  Vertex cover has a fast 2-approximation (greedy edge picking) and is one of the friendliest hard problems when the optimal cover is small (a parameterized algorithm runs in time exponential only in the cover size).  Independent set and clique are much harder to approximate.  In Rust, model as integer programming via good_lp for exact answers on moderate instances.`,
@@ -552,6 +1021,25 @@ When you see a "pick the best subset" problem, it is probably one of these three
   },
   {
     title: 'Coloring — the two-versus-three cliff',
+    steps: [
+      {
+        prose: `petgraph's \`is_bipartite_undirected\` answers the two-color question in linear time — a BFS that two-colors as it walks.  For three or more colors, encode "vertex v gets color c" as Boolean variables and hand the formula to splr.`,
+        code: `use petgraph::algo::is_bipartite_undirected;
+use petgraph::graph::UnGraph;
+
+fn two_colorable(g: &UnGraph<&str, ()>) -> bool {
+    if let Some(start) = g.node_indices().next() {
+        is_bipartite_undirected(g, start)
+    } else { true }
+}
+
+// Three or more colors: build CNF and dispatch to splr (page 23).
+// At least one color per vertex, at most one color per vertex,
+// adjacent vertices differ.  Linear in the encoding, exponential
+// in the search — but solvers handle real instances at scale.`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Coloring with two categories (bipartite check) is fast.  Three or more categories is NP-complete.  Sometimes the right move is to redesign to need only two.',
     gesture: 'Two-coloring is cheap.  Three-coloring is famously expensive.  The boundary appears in scheduling, register allocation, and frequency assignment.',
     body: `Graph coloring asks: can every item be assigned one of k categories such that related items get different categories?  Two categories is bipartite testing and is in the cheap category.  Three or more is NP-complete.  Business uses: register allocation in compilers, frequency assignment in wireless networks, exam scheduling (no student takes two exams at the same time), conflict-free room assignment, manufacturing line scheduling.  When the constraint graph is sparse enough to be two-colorable, the work is linear.  When it is not, you are in the expensive category.  The right responses to a three-or-more coloring problem are: model as a SAT problem and use an industrial solver; model as integer programming via good_lp; use the DSATUR heuristic which works well in practice on many real graphs; or redesign the requirement to need fewer categories.`,
@@ -575,6 +1063,25 @@ When you cannot, the problem is genuinely in the expensive category.  Use the so
   },
   {
     title: 'The Hamilton trap',
+    steps: [
+      {
+        prose: `Hierholzer's algorithm for an Euler circuit (every edge once) is fifteen lines and linear time.  Hamilton (every vertex once) is brute force on permutations of vertices — \`O(n!)\` and exponential beyond about twelve nodes.  Read the requirement carefully.`,
+        code: `use itertools::Itertools;
+
+fn hamilton_circuit_brute(n: usize, edges: &[(usize, usize)]) -> Option<Vec<usize>> {
+    let mut adj = vec![vec![false; n]; n];
+    for &(u, v) in edges { adj[u][v] = true; adj[v][u] = true; }
+    (1..n).permutations(n - 1).find_map(|perm| {
+        let mut tour = vec![0];
+        tour.extend(perm);
+        let ok = tour.windows(2).all(|w| adj[w[0]][w[1]])
+            && adj[*tour.last().unwrap()][0];
+        ok.then_some(tour)
+    })
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Visit every location once is hard.  Visit every connection once is cheap.  The two sound the same and are not.',
     gesture: 'The most famous "looks easy, is actually hard" problem in graph theory.  Read the requirement carefully.',
     body: `Two problems sound identical and are not.  Euler circuit: traverse every connection in a network exactly once and return to the start.  Solvable in linear time — connected network where every node has even degree.  Hamilton circuit: visit every node in a network exactly once and return to the start.  NP-complete.  The change from "every edge" to "every vertex" is one word and a complexity-class cliff.  Business uses of Hamilton circuit appear in DNA sequencing, snowplow routing (with twists), and various puzzle and game contexts.  Business uses of Euler circuit appear in postal delivery (visit every street), inspection routing, and any visit-every-link problem.  When sizing a routing feature, the first question is whether the requirement is visit-every-link or visit-every-stop.  The first is days.  The second is a quarter (or a SaaS).`,
@@ -600,6 +1107,25 @@ When in doubt, ask the requester: what counts as a unit of work — the road, or
   },
   {
     title: 'Find a subset that sums right',
+    steps: [
+      {
+        prose: `Same DP shape as knapsack — a Boolean reachability table indexed by sum.  For a financial-netting problem with trades up to a million dollars, this is microseconds.  When the target gets cryptographically large, switch to meet-in-the-middle or ILP.`,
+        code: `fn subset_sums_to(items: &[u32], target: u32) -> bool {
+    let t = target as usize;
+    let mut reachable = vec![false; t + 1];
+    reachable[0] = true;
+    for &v in items {
+        let v = v as usize;
+        if v > t { continue; }
+        for s in (v..=t).rev() {
+            if reachable[s - v] { reachable[s] = true; }
+        }
+    }
+    reachable[t]
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Picking items that sum to exactly the target is NP-complete but practically tractable when numbers are reasonable.',
     gesture: 'The simplest NP-complete arithmetic problem.  Shows up in finance, scheduling, and resource allocation.',
     body: `Subset sum: given a set of numbers and a target, find a subset summing exactly to the target.  Partition: split a set into two equal-sum halves.  Both NP-complete.  Business uses include change-making with constraints, financial netting (find a subset of trades summing to a specific cash position), inventory balancing (split warehouse contents into equal-value shipments), workload partitioning across machines.  Like knapsack, these are weakly NP-complete — the standard dynamic programming algorithm runs in time proportional to items times target value, fast for typical business inputs.  For problems where the numbers are very large (cryptocurrency, exact dollar amounts), the meet-in-the-middle technique handles up to around sixty items.  In Rust, hand-roll the DP for small target values, or model as integer programming.`,
@@ -621,6 +1147,25 @@ This is also the simplest reduction target.  Many other NP-complete problems can
   },
   {
     title: 'Bin packing — fit the items into the fewest containers',
+    steps: [
+      {
+        prose: `First-Fit-Decreasing — sort items by descending size, place each in the first bin that fits.  At most 11/9 of optimal, usually within a few percent on real workloads.  Twenty lines of Rust replaces a quarter of bespoke search code.`,
+        code: `fn first_fit_decreasing(sizes: &[u32], capacity: u32) -> Vec<Vec<u32>> {
+    let mut items = sizes.to_vec();
+    items.sort_unstable_by(|a, b| b.cmp(a));
+    let mut bins: Vec<Vec<u32>> = Vec::new();
+    for size in items {
+        let used: Vec<u32> = bins.iter().map(|b| b.iter().sum()).collect();
+        match used.iter().position(|&u| u + size <= capacity) {
+            Some(i) => bins[i].push(size),
+            None => bins.push(vec![size]),
+        }
+    }
+    bins
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Packing items into the fewest fixed-capacity containers is NP-complete but has great approximations.  Most business uses are well-served by First-Fit-Decreasing.',
     gesture: 'Bin packing is the workhorse hard problem.  When it shows up, the approximation is usually good enough.',
     body: `Bin packing: given items with various sizes and bins with fixed capacity, pack everything into the fewest bins.  Business uses include packing virtual machines onto physical servers, packing files onto storage volumes, packing cargo into containers, packing ad creatives into broadcast time slots, packing software jobs onto compute clusters.  Strongly NP-complete.  But the approximation picture is excellent.  First-Fit-Decreasing (FFD) — sort items by decreasing size, place each in the first bin that fits — uses at most 11/9 of the optimal bin count.  On real workloads, the result is typically within a few percent of optimal.  For business problems where the approximation gap matters, model as integer programming and call HiGHS.  Most operational bin packing in production uses FFD as the workhorse and reserves exact solvers for offline planning.`,
@@ -644,6 +1189,30 @@ The category is "hard but well-tooled."  Use the tools.`
   },
   {
     title: 'When the variables must be whole numbers',
+    steps: [
+      {
+        prose: `Facility location with discrete decisions — for each candidate site, build or do not — is ILP.  Same \`good_lp\` API as page 19, the only change is \`.binary()\` on the variables.  Modern solvers handle hundreds of thousands of binaries in seconds.`,
+        code: `use good_lp::{constraint, default_solver, ProblemVariables, SolverModel, Solution, variable};
+
+fn pick_warehouses(open_cost: &[f64], demand: &[Vec<f64>]) -> Vec<bool> {
+    let n = open_cost.len();
+    let m = demand.len();
+    let mut vars = ProblemVariables::new();
+    let open: Vec<_> = (0..n).map(|_| vars.add(variable().binary())).collect();
+    let model = vars
+        .minimise(open.iter().zip(open_cost).map(|(v, &c)| v * c).sum::<good_lp::Expression>())
+        .using(default_solver);
+    let mut model = model;
+    for j in 0..m {
+        let coverage: good_lp::Expression = (0..n).map(|i| demand[j][i] * open[i]).sum();
+        model = model.with(constraint!(coverage >= 1.0));
+    }
+    let sol = model.solve().expect("ILP solved");
+    (0..n).map(|i| sol.value(open[i]) > 0.5).collect()
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Linear programming with integer variables is NP-complete.  But modern solvers handle hundreds of thousands of variables on practical instances.',
     gesture: 'Integer programming is NP-complete in theory and the most useful framework in operations research in practice.  Buy the solver.',
     body: `Integer linear programming (ILP) is linear programming with the requirement that some or all variables take integer values.  This single addition pushes the problem from polynomial to NP-complete.  It also makes it the most useful framework in operations research.  Vehicle routing, crew scheduling, capacity planning, network design, facility location, production planning — all most naturally expressed as integer programs.  Modern solvers (HiGHS, Gurobi, CPLEX) combine branch-and-bound, cutting-plane methods, primal heuristics, and presolve into engineering monuments that solve hundreds-of-thousands-of-variable problems in seconds.  Rust's good_lp library exposes ILP with the same modeling interface as LP — declare some variables as integer or binary, add constraints, set objective, solve.  HiGHS is the recommended open-source backend.  For competitive performance on the largest problems, Gurobi or CPLEX (commercial) are state of the art.`,
@@ -667,6 +1236,28 @@ ILP is NP-complete.  ILP solvers are great.  Both facts are true.`
   // ──────── Part IV — When "hard" hits your roadmap ────────
   {
     title: 'Approximation — provably close to optimal',
+    steps: [
+      {
+        prose: `The classic 2-approximation for vertex cover: pick any uncovered edge, add both endpoints, repeat.  Twenty lines, formal guarantee of at most twice the optimal cover size.  Faster than the ILP from page 27 — use it when 2× is good enough.`,
+        code: `use std::collections::HashSet;
+
+fn vertex_cover_2approx(n: usize, edges: &[(usize, usize)]) -> HashSet<usize> {
+    let mut covered = vec![false; edges.len()];
+    let mut cover = HashSet::new();
+    for (i, &(u, v)) in edges.iter().enumerate() {
+        if covered[i] { continue; }
+        cover.insert(u);
+        cover.insert(v);
+        let _ = n; // unused; kept for signature parity
+        for (j, &(a, b)) in edges.iter().enumerate() {
+            if cover.contains(&a) || cover.contains(&b) { covered[j] = true; }
+        }
+    }
+    cover
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When exact is too expensive, the right replacement is "provably within a known factor of optimal."  The bound is the contract.',
     gesture: 'An approximation algorithm trades exactness for speed — with a number attached to how much you sacrificed.',
     body: `When exact methods are too slow for a hard problem, an approximation algorithm is the next layer of the toolkit.  An approximation is a polynomial-time algorithm with a proven bound on how far its answer can be from optimal — for example, "always within a factor of two."  Classic results: 2-approximation for vertex cover (greedy edge picking), 3/2-approximation for metric TSP (Christofides 1976), about-1.22 for bin packing (First-Fit-Decreasing), 1+log(n) for set cover (greedy).  The bound is the contract: your team knows exactly how much they are sacrificing.  Some problems are not even approximable — independent set, clique, graph coloring all resist constant-factor approximations.  When sizing a hard-problem feature, the relevant question is not "can we solve this" but "what approximation ratio is acceptable to the business and what algorithm achieves it."`,
@@ -690,6 +1281,33 @@ The bound is the negotiation.  Use it.`
   },
   {
     title: 'The approximation hierarchy — how good can you get',
+    steps: [
+      {
+        prose: `The knapsack FPTAS — set an \`epsilon\` tolerance, scale every value down, run the DP on the smaller numbers, round back up.  The result is within \`(1 − ε)\` of optimal in time polynomial in both the input and \`1/ε\`.  A quality knob you actually get to turn.`,
+        code: `fn knapsack_fptas(weights: &[u32], values: &[u32], capacity: u32, epsilon: f64) -> u64 {
+    let v_max = *values.iter().max().unwrap_or(&1) as f64;
+    let n = values.len() as f64;
+    let k = (epsilon * v_max / n).max(1.0);
+    let scaled: Vec<u32> = values.iter().map(|&v| (v as f64 / k) as u32).collect();
+    let total: u32 = scaled.iter().sum();
+    let mut dp = vec![u32::MAX; (total + 1) as usize];
+    dp[0] = 0;
+    for (i, &v) in scaled.iter().enumerate() {
+        for s in (v..=total).rev() {
+            if dp[(s - v) as usize] != u32::MAX {
+                dp[s as usize] = dp[s as usize].min(dp[(s - v) as usize] + weights[i]);
+            }
+        }
+    }
+    (0..=total)
+        .filter(|&s| dp[s as usize] <= capacity)
+        .map(|s| (s as f64 * k) as u64)
+        .max()
+        .unwrap_or(0)
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Some hard problems have arbitrarily tight approximations (FPTAS).  Some have only constant-factor (APX).  Some are hopeless.',
     gesture: 'The second layer of the complexity map: not all "approximable" problems are equally approximable.',
     body: `Approximation algorithms have their own complexity hierarchy.  FPTAS — Fully Polynomial-Time Approximation Scheme — is the gold standard: tunable closeness to optimal with polynomial cost in both input size and the tightness.  Knapsack has an FPTAS.  PTAS is the next tier: polynomial cost in input size, but the polynomial may explode as the tightness increases.  Euclidean TSP has a PTAS.  APX is the class of problems with constant-factor approximations.  APX-hard means no PTAS exists unless P = NP — vertex cover, metric TSP, set cover are APX-hard.  Some problems (independent set, clique) cannot even be approximated within constant factors.  For business planning, knowing where a problem sits in this hierarchy determines how much approximation budget you have.  An FPTAS lets you trade compute for quality smoothly.  APX-hard problems have a fixed quality ceiling — you can hit the bound but not improve below it without breaking complexity assumptions.`,
@@ -713,6 +1331,28 @@ The engine behind all of this is the PCP theorem from 1998, which characterizes 
   },
   {
     title: 'When one dimension is small',
+    steps: [
+      {
+        prose: `Fixed-parameter vertex cover — branch on each uncovered edge, recurse with \`k − 1\`.  Worst case \`2ᵏ\` branches, polynomial in \`n\`.  For a graph with millions of nodes and a target cover of size 30, the work is feasible.`,
+        code: `fn vertex_cover_fpt(edges: &[(usize, usize)], k: i32) -> Option<Vec<(usize, usize)>> {
+    if k < 0 { return None; }
+    let uncovered = edges.iter().copied().next();
+    let Some((u, v)) = uncovered else { return Some(vec![]); };
+    let without_u: Vec<_> = edges.iter().filter(|e| e.0 != u && e.1 != u).copied().collect();
+    if let Some(mut sol) = vertex_cover_fpt(&without_u, k - 1) {
+        sol.push((u, u));
+        return Some(sol);
+    }
+    let without_v: Vec<_> = edges.iter().filter(|e| e.0 != v && e.1 != v).copied().collect();
+    if let Some(mut sol) = vertex_cover_fpt(&without_v, k - 1) {
+        sol.push((v, v));
+        return Some(sol);
+    }
+    None
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Some hard problems become cheap when one part of the input is small — even if the rest is huge.  Look for the small parameter.',
     gesture: 'NP-hard does not mean uniformly hard.  Real problems often have a small dimension you can exploit.',
     body: `Many NP-hard problems become polynomial when one structural parameter of the input is small, even if the rest is huge.  Vertex cover on a graph with millions of nodes is fast when the optimal cover is small (work grows exponentially only in the cover size, not the graph size).  Problems on graphs with bounded treewidth (a measure of how tree-like the graph is) are polynomial via dynamic programming on a tree decomposition — and most NP-complete graph problems collapse this way.  This area is called parameterized complexity.  In practice, real business problems often have small structural parameters that the team can exploit: small kernel size after preprocessing, small treewidth, small number of conflicting items, small number of distinct values.  Identifying the small parameter is the engineering win.`,
@@ -734,6 +1374,37 @@ Hardness is not uniform.  Find the small dimension.  Exploit it.`
   },
   {
     title: 'When everything else fails — heuristics',
+    steps: [
+      {
+        prose: `Simulated annealing in plain Rust — pick a neighbor, accept improvements always, accept regressions with temperature-dependent probability, cool gradually.  For a real codebase reach for \`argmin\` to get logging, restarts, and the Metropolis criterion already wired up.`,
+        code: `use rand::Rng;
+
+fn anneal<S: Clone>(
+    mut state: S,
+    cost: impl Fn(&S) -> f64,
+    neighbor: impl Fn(&S, &mut dyn rand::RngCore) -> S,
+    mut temp: f64,
+    cooling: f64,
+    iterations: usize,
+) -> S {
+    let mut rng = rand::thread_rng();
+    let mut best = state.clone();
+    let mut best_cost = cost(&best);
+    for _ in 0..iterations {
+        let candidate = neighbor(&state, &mut rng);
+        let delta = cost(&candidate) - cost(&state);
+        if delta < 0.0 || rng.gen::<f64>() < (-delta / temp).exp() {
+            state = candidate;
+            let c = cost(&state);
+            if c < best_cost { best_cost = c; best = state.clone(); }
+        }
+        temp *= cooling;
+    }
+    best
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'When exact solvers are too slow, approximations are too loose, and parameterization does not apply, you reach for heuristic search.  No guarantees, but often the right answer.',
     gesture: 'The last layer: search frameworks with no quality bounds, frequently the most useful at production scale.',
     body: `When exact methods fail, approximations are too loose, and parameterized algorithms do not apply, the last layer is heuristic search.  Simulated annealing accepts worsening moves with temperature-dependent probability, cooling toward greedy.  Tabu search maintains a memory of recently visited solutions to force exploration.  Genetic algorithms evolve populations.  Large neighborhood search alternates destruction and repair.  None come with worst-case quality guarantees.  All routinely produce strong solutions on real instances when nothing else fits.  Modern vehicle-routing solvers are heuristic-based.  Modern scheduling SaaS like OptaPlanner combine heuristics with constraint solvers.  Rust's argmin library provides a framework for several gradient-free methods.  At this layer of the stack, you are doing engineering, not theory.  Measure on representative instances.  Tune the parameters.  Accept that the work is empirical.`,
@@ -761,6 +1432,31 @@ When a problem has gone past every theoretical category — past exact, past app
   // ─────────── Part V — The diagnostic, in a meeting ───────────
   {
     title: 'Is this in the cheap category — a checklist',
+    steps: [
+      {
+        prose: `The six tests as an enum the codebase carries.  Each branch points at the right crate.  Wire this into your planning template and the procurement question becomes a constructor argument, not a debate.`,
+        code: `enum CheapTest {
+    GreedyWithExchange,   // sorting, scheduling, MST
+    DynamicProgramming,   // counting, alignment, DAGs
+    NetworkFlow,          // matching, allocation, partition
+    TwoPieceConstraint,   // 2-SAT via SCC
+    LinearProgramming,    // continuous vars + linear constraints
+    LinearAlgebra,        // matrices, eigenvalues, factorization
+}
+
+fn crate_for(test: CheapTest) -> &'static str {
+    match test {
+        CheapTest::GreedyWithExchange => "std::slice::sort_unstable + a loop",
+        CheapTest::DynamicProgramming => "hand-rolled table",
+        CheapTest::NetworkFlow        => "petgraph::algo::ford_fulkerson",
+        CheapTest::TwoPieceConstraint => "petgraph::algo::tarjan_scc on implication graph",
+        CheapTest::LinearProgramming  => "good_lp with the HiGHS backend",
+        CheapTest::LinearAlgebra      => "nalgebra or faer",
+    }
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Six structural tests.  If any passes, your problem is in the cheap category and a library exists.  Run them before sizing the work.',
     gesture: 'Before you size an engineering effort, run the six tests.  Half the time the problem is already solved.',
     body: `Six structural tests determine whether a problem is in the cheap category.  Greedy with exchange argument — does picking the best local choice provably lead to optimal?  (Many sorting, scheduling, allocation problems.)  Dynamic programming — is there a small set of subproblems that combine into the answer?  (Most counting, optimization, alignment problems.)  Network flow — does the problem reduce to "maximum flow through a network with capacities"?  (Many matching, allocation, partition problems.)  Two-piece constraints — are all the constraints expressible as "if X then Y" with exactly two variables?  (Many configuration, scheduling problems.)  Linear programming — are constraints and objective linear with continuous variables?  (Most operational planning.)  Linear algebra — does the problem reduce to matrix factorization, eigenvalues, or linear systems?  (Many ranking, recommendation, signal processing problems.)  If any test passes, you have a settled problem and a library.  Run the checklist in the meeting.`,
@@ -786,6 +1482,51 @@ If no test passes, you may be in the expensive category — see page 38 for the 
   },
   {
     title: 'Eight twins — one cheap, one expensive',
+    steps: [
+      {
+        prose: `The eight pairs, encoded as types.  Each pair has the same input shape and a different return shape — one falls to a one-line library call, the other needs a solver.  Read the pair before sizing the ticket.`,
+        code: `// Cheap twin — Euler, visit every edge.  Linear time.
+fn inspect_every_road(roads: &[(usize, usize)]) -> Option<Vec<usize>> { todo!("Hierholzer") }
+// Expensive twin — Hamilton, visit every node.  NP-complete.
+fn visit_every_store(roads: &[(usize, usize)]) -> Option<Vec<usize>> { todo!("SAT or brute force") }
+
+// Cheap — 2-SAT.  Linear via SCC on the implication graph.
+fn two_piece_rules(clauses: &[(i32, i32)]) -> bool { todo!("tarjan_scc") }
+// Expensive — 3-SAT.  NP-complete.
+fn three_piece_rules(clauses: &[[i32; 3]]) -> bool { todo!("splr") }
+
+// Cheap — bipartite check.  Linear.
+fn two_categories(g: &[(usize, usize)]) -> bool { todo!("BFS two-coloring") }
+// Expensive — k-coloring for k ≥ 3.  NP-complete.
+fn three_categories(g: &[(usize, usize)]) -> Option<Vec<u8>> { todo!("splr") }
+
+// Cheap — shortest path with positive weights.  Dijkstra.
+fn shortest(g: &[(usize, usize, u32)]) -> u32 { todo!("petgraph::dijkstra") }
+// Expensive — longest simple path.  NP-complete.
+fn longest_no_repeat(g: &[(usize, usize, u32)]) -> u32 { todo!("brute force or ILP") }
+
+// Cheap — MST, connect every node.  Greedy.
+fn connect_all(sites: &[(usize, usize, u32)]) -> u32 { todo!("min_spanning_tree") }
+// Expensive — Steiner tree, connect a subset using relays.  NP-complete.
+fn connect_subset(sites: &[(usize, usize, u32)], terminals: &[usize]) -> u32 { todo!("ILP") }
+
+// Cheap — bipartite matching.  Hungarian.
+fn match_two_sides(cost: &[Vec<i32>]) -> Vec<usize> { todo!("kuhn_munkres") }
+// Expensive — 3-dimensional matching.  NP-complete.
+fn match_three_sides(triples: &[(usize, usize, usize)]) -> Vec<(usize, usize, usize)> { todo!("ILP") }
+
+// Cheap — LP, continuous variables.
+fn allocate_fractional(c: &[f64]) -> Vec<f64> { todo!("good_lp + HiGHS, continuous") }
+// Expensive — ILP, integer variables.
+fn allocate_whole(c: &[f64]) -> Vec<i32> { todo!("good_lp + HiGHS, binary or integer") }
+
+// Cheap — fractional knapsack.  Greedy by ratio.
+fn take_fractions(items: &[(u32, u32)], cap: u32) -> f64 { todo!("sort by value/weight, fill") }
+// Expensive — 0/1 knapsack.  DP for small budgets, ILP otherwise.
+fn take_whole_items(items: &[(u32, u32)], cap: u32) -> u32 { todo!("knapsack DP") }`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Eight pairs of business problems that sound nearly identical.  In each pair, one twin is days; the other is a quarter.  This is the page to bookmark.',
     gesture: 'The single most useful page in this book — eight lookalikes that distinguish "a sprint" from "a SaaS contract."',
     body: `Eight pairs of problems sound nearly identical and live in different complexity classes.  Visit every link (cheap, Euler) vs visit every stop (expensive, Hamilton).  Two-piece constraints (cheap, 2-SAT) vs three-piece (expensive, 3-SAT).  Two categories (cheap, bipartite test) vs three or more (expensive, coloring).  Shortest path (cheap, Dijkstra) vs longest path that does not repeat (expensive).  Connect everything (cheap, MST) vs connect a subset using others as relays (expensive, Steiner tree).  Match two sides (cheap, bipartite matching) vs match three sides (expensive, 3D matching).  Linear programming (cheap) vs integer linear programming (expensive).  Take items in fractions (cheap, greedy by ratio) vs take items whole (expensive, 0/1 knapsack).  In every pair, the difference is one specification detail — and the engineering cost varies by an order of magnitude.  Read requirements carefully.`,
@@ -817,6 +1558,45 @@ Bookmark this page.  Run it in every planning meeting that involves an optimizat
   },
   {
     title: 'Six places teams reach for the wrong category',
+    steps: [
+      {
+        prose: `A detector that flags an estimate against the six recurring traps.  Run it on the planning doc.  Every \`true\` is a sprint that has probably been quoted as a quarter.`,
+        code: `struct Estimate {
+    description: String,
+    proposed_tool: &'static str,
+    has_positive_weights_only: bool,
+    is_two_sided_matching: bool,
+    has_only_continuous_vars: bool,
+    every_constraint_has_two_vars: bool,
+    data_is_dag: bool,
+    has_matroid_structure: bool,
+}
+
+fn wrong_category(e: &Estimate) -> Vec<&'static str> {
+    let mut flags = Vec::new();
+    if e.has_positive_weights_only && !e.proposed_tool.contains("dijkstra") {
+        flags.push("shortest path with positive weights — use Dijkstra, not SAT");
+    }
+    if e.is_two_sided_matching && e.proposed_tool.contains("ILP") {
+        flags.push("two-sided matching — Hopcroft-Karp or Hungarian, not ILP");
+    }
+    if e.has_only_continuous_vars && e.proposed_tool.contains("search") {
+        flags.push("continuous LP — model in good_lp, don't search");
+    }
+    if e.every_constraint_has_two_vars && e.proposed_tool.contains("SAT") {
+        flags.push("2-SAT — implication graph + SCC, not CDCL");
+    }
+    if e.data_is_dag && e.proposed_tool.contains("heuristic") {
+        flags.push("DAG — toposort + DP, not heuristic search");
+    }
+    if e.has_matroid_structure && e.proposed_tool.contains("ILP") {
+        flags.push("matroid — greedy is provably optimal");
+    }
+    flags
+}`,
+        lang: 'rust'
+      }
+    ],
     tldr: 'Six recurring patterns where engineers overestimate problem difficulty.  Each one is a place this book\'s thesis pays for itself.',
     gesture: 'The six traps that cause teams to size a sprint as a quarter.  Read them; recognize the patterns; redirect the work.',
     body: `Six recurring misidentifications.  Treating shortest-path-with-positive-costs as hard because the network is large — Dijkstra handles millions of nodes.  Treating bipartite matching as hard because the count is large — Hopcroft-Karp handles tens of thousands per second.  Treating linear programming as hard because there are many variables — HiGHS handles millions.  Treating two-piece constraint problems as SAT problems — they are linear-time via graph methods.  Treating problems on DAGs as if cycles were possible — the acyclic structure collapses many NP-hard problems to polynomial.  Treating problems with matroid structure as needing search when greedy is provably optimal.  In every case the fix is the same: name the structural property, look up the named algorithm, find the Rust crate.  See page 37 for the checklist and page 38 for the lookalikes.`,
