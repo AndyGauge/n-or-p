@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "sveltekitbook": "^0.3.0"
+    "sveltekitbook": "^0.4.1"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",
