@@ -35,6 +35,47 @@ fn is_valid_sudoku(grid: &[[u8; 9]; 9]) -> bool {
     true
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `The dense line is the box-coordinate trick.  The outer \`i\` does triple duty — row \`i\`, column \`i\`, AND box \`i\` — so one pair of nested loops checks all three groups at once.  For the box, each box \`i\` sits at corner \`((i/3)*3, (i%3)*3)\` and cell \`j\` inside it sits at offset \`(j/3, j%3)\`.  Add the corner and the offset and you have the absolute \`(row, col)\`.`,
+        code: `// Same expression, expanded into named pieces.
+let box_row    = i / 3;           // 0..3 — which row of boxes
+let box_col    = i % 3;           // 0..3 — which column of boxes
+let corner_row = box_row * 3;     // top-left of that box
+let corner_col = box_col * 3;
+
+let cell_row   = j / 3;           // 0..3 — offset down inside the box
+let cell_col   = j % 3;           // 0..3 — offset right inside the box
+
+let row = corner_row + cell_row;
+let col = corner_col + cell_col;
+let b   = grid[row][col];
+// Identical to: grid[(i / 3) * 3 + j / 3][(i % 3) * 3 + j % 3]`,
+        lang: 'rust'
+      },
+      {
+        prose: `The layout makes the divmod obvious.  A 9×9 grid is a 3×3 grid of 3×3 boxes; \`i\` selects a box, \`j\` selects a cell within it.  Worked example below for \`i = 4, j = 5\` — the middle box, cell 5 — which lands on absolute \`(4, 5)\`.`,
+        code: `         col 0 1 2 | 3 4 5 | 6 7 8
+        ------+-------+-------+-------
+row 0   |  .  .  .  |  .  .  .  |  .  .  .
+row 1   |  box 0    |  box 1    |  box 2
+row 2   |  .  .  .  |  .  .  .  |  .  .  .
+        +-----------+-----------+-----------
+row 3   |  .  .  .  |  .  .  .  |  .  .  .
+row 4   |  box 3    |  box 4  * |  box 5     ← i=4, j=5 lands here
+row 5   |  .  .  .  |  .  .  .  |  .  .  .
+        +-----------+-----------+-----------
+row 6   |  .  .  .  |  .  .  .  |  .  .  .
+row 7   |  box 6    |  box 7    |  box 8
+row 8   |  .  .  .  |  .  .  .  |  .  .  .
+
+i = 4 → box_row = 4 / 3 = 1   → corner_row = 1 * 3 = 3
+        box_col = 4 % 3 = 1   → corner_col = 1 * 3 = 3
+j = 5 → cell_row = 5 / 3 = 1
+        cell_col = 5 % 3 = 2
+
+absolute (row, col) = (3 + 1, 3 + 2) = (4, 5)`,
+        lang: 'text'
       }
     ],
     tldr: 'Some problems are cheap to solve forever.  Some are cheap to check but expensive to solve.  The first kind is called P.  The second is NP.',
@@ -75,6 +116,68 @@ fn schedule_is_valid(shifts: &[Shift], min_gap: u32) -> bool {
     true
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `\`HashMap<K, V>\` is Rust's hash table — a keyed lookup that takes a key and gives you back a value in roughly constant time.  \`Vec<T>\` is a growable list of \`T\` stored in one contiguous block.  Combined here as \`HashMap<u32, Vec<&Shift>>\`, the map keys are staff IDs and each value is the list of that person's shifts.  The reason for the grouping: the no-overlap rule only applies *within* one person's day — Alice's morning shift cannot conflict with Bob's afternoon.  Group first, then we only have to worry about one person at a time.`,
+        code: `// What the grouped data looks like after the first loop:
+//
+//   by_staff:
+//     17  ─►  [Shift { start:  900, end: 1300, .. },
+//             Shift { start: 1400, end: 1800, .. }]
+//     42  ─►  [Shift { start: 1000, end: 1400, .. }]
+//     91  ─►  [Shift { start:  800, end: 1200, .. },
+//             Shift { start: 1230, end: 1700, .. }]
+//
+// .entry(key) is the canonical "get or insert" pattern.
+// .or_default() inserts an empty Vec the first time we see a staff ID.
+// .push(s) appends — Vec grows automatically.
+let mut by_staff: HashMap<u32, Vec<&Shift>> = HashMap::new();
+for s in shifts {
+    by_staff.entry(s.staff).or_default().push(s);
+}`,
+        lang: 'rust'
+      },
+      {
+        prose: `Sort each person's shifts by start time, then walk consecutive pairs.  \`windows(2)\` is a slice helper that yields every overlapping pair: \`[a, b]\`, then \`[b, c]\`, then \`[c, d]\`.  After sorting, if shift \`w[0]\` ends at minute 1300 and shift \`w[1]\` starts at minute 1310, the actual gap is 10 minutes.  The rule "at least \`min_gap\` between shifts" means \`w[1].start − w[0].end ≥ min_gap\`, which rearranges to \`w[0].end + min_gap ≤ w[1].start\`.  If the left side is *greater*, the gap was violated and the schedule is invalid.`,
+        code: `// Sort puts the earliest start first; windows(2) walks adjacent pairs.
+assignments.sort_by_key(|s| s.start);
+for w in assignments.windows(2) {
+    // Want: w[1].start  -  w[0].end  >=  min_gap
+    // i.e.: w[0].end + min_gap  <=  w[1].start
+    // Violation is the opposite:
+    if w[0].end + min_gap > w[1].start {
+        return false;
+    }
+}
+// If no pair fails for any staff member, the schedule is valid.`,
+        lang: 'rust'
+      },
+      {
+        prose: `One staff member's timeline.  The earlier shift ends, then a buffer, then the next shift starts.  When the buffer is at least \`min_gap\`, the schedule is fine; when it is less, the check fails on this pair and the function short-circuits with \`false\`.`,
+        code: `min_gap = 30 minutes
+
+OK  (gap = 60 min, passes)
+    ─────────────────────────────────────────────────────────────►  time
+              w[0]                              w[1]
+       ╔══════════════╗      gap = 60 min      ╔══════════════╗
+       ║  09:00 –     ║◄─────────────────────► ║  14:00 –     ║
+       ║       13:00  ║                        ║       18:00  ║
+       ╚══════════════╝                        ╚══════════════╝
+                       ↑                       ↑
+                       w[0].end = 13:00        w[1].start = 14:00
+                       13:00 + 30 = 13:30  ≤  14:00   ✓
+
+
+FAIL  (gap = 10 min, fails)
+    ─────────────────────────────────────────────────────────────►  time
+              w[0]                w[1]
+       ╔══════════════╗  10 min ╔══════════════╗
+       ║  09:00 –     ║◄──────► ║  13:10 –     ║
+       ║       13:00  ║         ║       17:10  ║
+       ╚══════════════╝         ╚══════════════╝
+                       ↑        ↑
+                       13:00 + 30 = 13:30  >  13:10   ✗  return false`,
+        lang: 'text'
       }
     ],
     tldr: 'It is much easier to grade a finished answer than to produce one.  That asymmetry is where the entire field of "hard problems" lives.',
@@ -105,6 +208,52 @@ fn assign_drivers(miles: Vec<Vec<i32>>) -> Vec<usize> {
     let (_total, assignment) = kuhn_munkres_min(&m);
     assignment // assignment[driver] = delivery
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `The function is called \`kuhn_munkres_min\` — a stack of two surnames you probably have not seen on an algorithm before.  Harold Kuhn published the method in 1955; James Munkres refined the analysis in 1957.  The rest of the world calls it the **Hungarian algorithm** because Kuhn rediscovered an idea from two Hungarian mathematicians of the 1930s (Dénes Kőnig and Jenő Egerváry) and credited them in the name.  Three names, one algorithm — papers say "Hungarian," textbooks say "Kuhn-Munkres," the Rust crate uses the historical-receipt version.`,
+        code: `// One algorithm, four people, three names:
+//   1931  Kőnig      (Hungary) — duality theorem
+//   1932  Egerváry   (Hungary) — algorithmic refinement
+//   1955  Kuhn       (US)      — "The Hungarian Method"
+//   1957  Munkres    (US)      — polynomial-time analysis
+//
+// Papers call it the Hungarian algorithm.
+// Crates call it kuhn_munkres.
+use pathfinding::kuhn_munkres::kuhn_munkres_min;`,
+        lang: 'rust'
+      },
+      {
+        prose: `A \`Matrix\` is a rectangular grid of numbers — rows × columns, every row the same length.  Here each row is a driver and each column is a delivery, and the cell at \`(driver, delivery)\` is the cost (miles) of that pairing.  \`Matrix::from_rows\` takes a \`Vec<Vec<i32>>\` (a list of equal-length lists) and turns it into a real matrix with row/column accessors.  \`.expect("rectangular")\` makes the function panic loudly if the rows are not all the same length — a matrix has no room for a ragged input.`,
+        code: `//          delivery 0   delivery 1   delivery 2
+//        ┌─────────────────────────────────────────┐
+// driver 0│      12           8           20       │
+// driver 1│       9          15           11       │
+// driver 2│      14          10            7       │
+//        └─────────────────────────────────────────┘
+//
+// Cell (1, 2) = 11 means driver 1 → delivery 2 costs 11 miles.
+let miles = vec![
+    vec![12,  8, 20],
+    vec![ 9, 15, 11],
+    vec![14, 10,  7],
+];
+let m = Matrix::from_rows(miles).expect("rectangular");`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`//\` starts a **line comment** in Rust — everything after the two slashes, until the end of that line, is ignored by the compiler.  It is a note to the reader, not code.  The trailing note \`// assignment[driver] = delivery\` describes the shape of the return value: \`assignment\` is a \`Vec<usize>\` where the index is the driver number and the entry at that index is the delivery they were assigned to.  So if \`assignment[1] == 2\`, driver 1 is going on delivery 2.`,
+        code: `// "//" starts a line comment — everything after it on the same
+// line is ignored by the compiler.  Notes to the reader, not code.
+
+let assignment = vec![0, 2, 1];   // index = driver, value = delivery
+//                    ^  ^  ^
+//                    │  │  └── driver 2 → delivery 1
+//                    │  └───── driver 1 → delivery 2
+//                    └──────── driver 0 → delivery 0
+
+// Look up which delivery driver 1 got:
+let d = assignment[1];   // d == 2`,
         lang: 'rust'
       }
     ],
@@ -139,6 +288,38 @@ fn procurement(problem: Complexity) -> &'static str {
     }
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `\`&\` in a type means **reference** — a borrow of someone else's data instead of an owned copy.  A \`String\` owns its bytes and can grow.  A \`&str\` is a view *into* bytes that live somewhere else — you can read them, you cannot grow them, and they belong to whoever lent them to you.  Functions that return strings usually return \`&str\` when the bytes already exist somewhere (a string literal, another struct's field) and only return \`String\` when fresh bytes have to be allocated.`,
+        code: `let owned:    String = String::from("hello");  // owns its bytes on the heap
+let borrowed: &str   = &owned;                 // a view into owned's bytes
+let literal:  &str   = "hello";                // a view into bytes baked into the binary
+
+// The "&" in a type is "reference to" — a borrow.
+// String  →  owns bytes you can grow or modify.
+// &str    →  read-only view of bytes someone else owns.`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`'static\` is a **lifetime annotation** — a label on the borrow saying how long the referenced data stays valid.  The apostrophe prefix marks every lifetime name (\`'a\`, \`'b\`, \`'static\`).  \`'static\` specifically means "valid for the entire run of the program."  String literals like \`"approximation or SaaS"\` get \`'static\` for free because the compiler bakes their bytes into the read-only section of the binary — they exist before \`main\` runs and after it returns.  Most function signatures do not need any lifetime written — the compiler **elides** (fills in) lifetimes from a small set of rules.  \`'static\` is the case where elision cannot help, because the returned reference is not tied to any input, so the lifetime has to be spelled out.`,
+        code: `// Every arm of procurement() returns a string literal.
+// Literals live in the binary forever ⇒ their lifetime is 'static.
+// Rust cannot guess that from the inputs, so we write it explicitly.
+fn procurement(p: Complexity) -> &'static str {
+    /* ... */
+    "approximation or SaaS"
+}
+
+// Elision in action — no lifetimes written, compiler infers them:
+fn first_word(s: &str) -> &str { /* tied to s's lifetime */ }
+
+// Equivalent with lifetimes explicit:
+fn first_word_explicit<'a>(s: &'a str) -> &'a str { /* same thing */ }
+
+// 'static is the one common annotation that resists elision.
+// The other named lifetimes ('a, 'b, ...) tie a return reference
+// to an input reference and the compiler usually fills them in.`,
+        lang: 'rust'
       }
     ],
     tldr: 'NP-complete is "as hard as any NP problem."  NP-hard is "at least that hard, possibly worse."  Knowing the label tells you what to buy.',
@@ -172,6 +353,31 @@ fn rsa_modulus(p: &BigUint, q: &BigUint) -> BigUint {
     // algorithm is known.  The day one is found, every RSA key on the
     // internet is broken.
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`is_prime\` does not return a plain \`bool\` — primality testing on huge integers is not always deterministic.  The crate returns a three-valued \`Primality\` enum that distinguishes "proved prime," "proved composite," and "probably prime" (passed Miller-Rabin, the standard probabilistic test, with an error rate roughly \`1\` in \`2⁶⁰\` per witness).  \`.probably()\` collapses both positive answers — proved-prime *and* probably-prime — into \`true\`, leaving only proved-composite as \`false\`.  For cryptographic-sized numbers, "probably" is the right answer to act on; the false-positive rate is below the rate at which cosmic rays flip bits in your RAM.`,
+        code: `// is_prime() returns a tri-state, not just a bool:
+//
+//   Primality::Yes       → proved prime (deterministic test passed)
+//   Primality::Probably  → passed Miller-Rabin, no proof either way
+//   Primality::No        → proved composite (a witness was found)
+//
+// .probably() merges the two positive answers into true:
+let answer = is_prime(p, None);
+let acceptable: bool = answer.probably();
+//
+// Same as writing:
+let acceptable = match answer {
+    Primality::Yes      => true,
+    Primality::Probably => true,
+    Primality::No       => false,
+};
+//
+// The 1-in-2⁶⁰ error rate sounds scary; in practice it is far
+// below the rate of hardware bit-flips from cosmic rays.  Every
+// piece of production crypto code in the world treats Probably
+// as Yes.`,
         lang: 'rust'
       }
     ],
@@ -208,6 +414,53 @@ fn newest_first(orders: &mut [Order]) {
 fn newest_first_parallel(orders: &mut [Order]) {
     orders.par_sort_unstable_by_key(|o| std::cmp::Reverse(o.placed_at));
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `"Unstable" here is a property of the *sorting algorithm*, not Rust's \`unsafe\` keyword.  A **stable** sort preserves the original relative order of equal elements; an **unstable** sort may reorder them.  Rust's \`sort()\` is stable (a Timsort variant) and allocates scratch space on the heap.  \`sort_unstable()\` uses pdqsort (a tuned quicksort) — faster, allocates nothing, but two \`Order\`s with the same \`placed_at\` might come out in either order.  For newest-first ranking, nothing in the schema cares which of two same-timestamp orders appears first, so \`sort_unstable\` is the right default.  Reach for plain \`sort\` only when you actually rely on equal-key stability — for example, when an earlier sort already established a secondary order you want to preserve.`,
+        code: `// "unstable" here = the sorting algorithm may reorder equal elements.
+// It has nothing to do with Rust's \`unsafe\` keyword.
+
+let mut orders = vec![
+    Order { id: 1, placed_at: 100, /* .. */ },   // input order: 1 before 2
+    Order { id: 2, placed_at: 100, /* .. */ },
+    Order { id: 3, placed_at:  50, /* .. */ },
+];
+
+orders.sort_by_key(|o| o.placed_at);
+// → ids: [3, 1, 2]   stable: id 1 stays before id 2 because they tie
+
+orders.sort_unstable_by_key(|o| o.placed_at);
+// → ids: [3, 1, 2] or [3, 2, 1]   either is allowed — they tie
+
+// Rule of thumb:
+//   sort()           ← stable, allocates, slightly slower
+//   sort_unstable()  ← unstable, no allocation, fastest default`,
+        lang: 'rust'
+      },
+      {
+        prose: `Separately, **safe vs unsafe Rust** is a different axis entirely.  All of the code on this page is safe Rust — the compiler proves at compile time that there are no use-after-free, no out-of-bounds indexing, no data races.  The \`unsafe\` keyword exists for the small minority of cases where you need to opt out of those checks (dereferencing raw pointers, calling C functions, building a new data structure whose invariants the compiler cannot see).  An \`unsafe\` block does not turn off the type system — it adds five specific superpowers, and the burden is on you to prove they are used correctly.  Nothing in this book uses \`unsafe\`.  The whole point of the language is that high-performance code (like \`sort_unstable\` or \`rayon\`'s parallel sort) is achievable without it.`,
+        code: `// Safe Rust — what every example in this book uses.
+// Compiler guarantees: no use-after-free, no data races,
+// no out-of-bounds indexing, no null-pointer dereferences.
+fn ok(orders: &mut [Order]) {
+    orders.sort_unstable_by_key(|o| o.placed_at);
+}
+
+// Unsafe Rust — used inside std and a few low-level crates.
+// You write \`unsafe\` to take responsibility for invariants
+// the compiler cannot check.  Five things become legal:
+//   1. dereference a raw pointer
+//   2. call an unsafe function
+//   3. access a mutable static
+//   4. implement an unsafe trait
+//   5. access fields of a union
+fn raw_example(ptr: *const u32) -> u32 {
+    unsafe { *ptr }   // YOU promise ptr is valid and aligned
+}
+
+// "unstable sort" and "unsafe Rust" sound related and are not.
+// sort_unstable is 100% safe.`,
         lang: 'rust'
       }
     ],
@@ -253,6 +506,37 @@ fn friends_within(g: &UnGraph<&str, ()>, start: NodeIndex, hops: usize) -> Vec<N
     out
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `**BFS** stands for **Breadth-First Search** — one of the two canonical ways to walk a graph.  BFS visits the graph in *layers* — first the start node, then everything one hop away, then everything two hops away, and so on.  Its counterpart is **DFS** (Depth-First Search), which dives down one branch as far as it can before backing up to try another.  For a "friends within N hops" feature the layer number IS the answer, so BFS is the right shape; for "does this graph have a cycle" or "find any path that works" DFS is usually shorter.  Both are linear time in the size of the graph, and \`petgraph\` exposes both as one-line visitor types (\`Bfs\` and \`Dfs\`).`,
+        code: `Graph (Alice is the start):
+
+                  Alice                ← depth 0
+                /   |   \\
+              Bob  Carl  Dee           ← depth 1   (1 hop from Alice)
+              /  \\        |
+           Eve   Frank  Greta          ← depth 2   (2 hops)
+                          |
+                        Henry          ← depth 3   (3 hops)
+
+
+BFS order  (layer by layer):
+    Alice  →  Bob, Carl, Dee  →  Eve, Frank, Greta  →  Henry
+
+DFS order  (dive, then back up):
+    Alice  →  Bob  →  Eve  →  Frank  →  Carl  →  Dee  →  Greta  →  Henry
+
+
+Use BFS  when the question is about distance:
+    "friends within 3 hops"
+    "shortest unweighted path"
+    "which nodes are reachable in <= k steps"
+
+Use DFS  when the question is about structure:
+    "is there any cycle"
+    "what is a topological order"
+    "find any path that works"`,
+        lang: 'text'
       }
     ],
     tldr: 'Walking through every connected item in a graph — friends-of-friends, dependencies, file trees — is one of the cheapest operations in computing.',
@@ -288,6 +572,55 @@ fn fastest_routes(road: &DiGraph<&str, u32>, from: NodeIndex)
     dijkstra(road, from, None, |e| *e.weight())
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `\`|e| *e.weight()\` is a **closure** — Rust's name for an anonymous function.  Other languages call this a *lambda*.  The pipes \`| |\` wrap the parameter list; everything after is the body.  Here the closure takes one parameter \`e\` (a reference to an edge), calls \`e.weight()\` to get \`&u32\` (a reference to the weight stored inside the graph), then uses the prefix \`*\` — the **dereference** operator — to read the underlying \`u32\` out of that reference.  The closure tells Dijkstra how to extract a cost from each edge; swap it for a different closure and the algorithm uses a different cost.`,
+        code: `// |e| *e.weight()
+//  │    │
+//  │    └── body: dereference the &u32 to get a u32
+//  └──────── parameter list: one parameter named e (an edge reference)
+
+// Same thing written as a named function:
+fn extract_weight(e: petgraph::graph::EdgeReference<u32>) -> u32 {
+    *e.weight()
+}
+
+// You can swap in any cost function you want:
+dijkstra(road, from, None, |e| *e.weight());        // real travel minutes
+dijkstra(road, from, None, |e| *e.weight() * 2);    // every road takes twice as long
+dijkstra(road, from, None, |_| 1u32);               // ignore weights — count hops`,
+        lang: 'rust'
+      },
+      {
+        prose: `Input shape: a directed graph where each node is an intersection and each edge has a \`u32\` weight (travel minutes).  Output shape: a \`HashMap<NodeIndex, u32>\` — for every node reachable from \`from\`, the cheapest total cost to get there.  Unreachable nodes are simply absent from the map.  Below is a four-intersection example with Dijkstra run from \`A\` — notice that \`D\` is reached cheaper via \`A → B → D\` (cost 3) than via \`A → C → D\` (cost 13), and the map records only the winning total.`,
+        code: `Input — &DiGraph<&str, u32>:
+
+      A ──2──▶ B ──1──▶ D
+      │                 ▲
+      5                 8
+      │                 │
+      ▼                 │
+      C ────────────────┘
+
+Edges in the graph:
+    A → B   2
+    A → C   5
+    B → D   1
+    C → D   8
+
+
+Call:  dijkstra(road, A, None, |e| *e.weight())
+
+
+Output — HashMap<NodeIndex, u32>:
+
+    {
+        A → 0,   // start: zero cost to reach yourself
+        B → 2,   // A → B
+        C → 5,   // A → C
+        D → 3,   // A → B → D = 2 + 1   (beats A → C → D = 5 + 8 = 13)
+    }`,
+        lang: 'text'
       }
     ],
     tldr: 'Finding the cheapest path from A to B in any kind of network is solved.  Every map app uses the same idea.  Your team should reach for the library.',
@@ -321,6 +654,88 @@ fn detect_arbitrage(fx: &DiGraph<&str, f32>, from: NodeIndex) -> Result<(), &'st
         Err(_) => Err("negative cycle — arbitrage opportunity exists"),
     }
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`match\` is Rust's pattern-matching expression — it picks one branch out of several based on the *shape* of a value.  When that value is an enum (a type with named variants), each branch handles one variant, and the compiler refuses to compile until every variant is covered.  This **exhaustiveness check** is the safety feature: you cannot forget a case.  Each arm can also bind the variant's payload — \`Ok(x)\` pulls the success value out into \`x\`, \`Err(e)\` pulls the error out into \`e\`.  The underscore \`_\` is a wildcard pattern that matches anything and binds nothing.`,
+        code: `// An enum has named variants, each optionally carrying data.
+enum Direction { North, South, East, West }
+
+match d {
+    Direction::North => "up",
+    Direction::South => "down",
+    Direction::East  => "right",
+    Direction::West  => "left",
+}
+// Delete any arm and the compiler refuses — exhaustiveness check.
+
+// Variants can carry data; match arms destructure it out.
+enum Shape {
+    Circle(f64),         // radius
+    Rect(f64, f64),      // width, height
+}
+
+let area = match s {
+    Shape::Circle(r)  => 3.1416 * r * r,
+    Shape::Rect(w, h) => w * h,
+};
+
+// _ is the wildcard — matches anything, binds nothing.
+match d {
+    Direction::North => "up",
+    _                => "not north",
+}`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`Option<T>\` is the standard library's "this might be a value, or might be nothing."  Two variants: \`Some(T)\` carries a \`T\`, \`None\` carries nothing.  Rust uses \`Option\` everywhere a more permissive language would use \`null\` — looking up a key in a \`HashMap\` returns \`Option<&V>\`, the first element of a slice is \`Option<&T>\`, finding a substring is \`Option<usize>\`.  The compiler will not let you read the inner value without first handling the \`None\` case, which is the whole point.`,
+        code: `enum Option<T> {
+    Some(T),
+    None,
+}
+
+let scores: HashMap<&str, i32> =
+    HashMap::from([("alice", 90), ("bob", 75)]);
+
+let alice = scores.get("alice");   // Some(&90)
+let chad  = scores.get("chad");    // None
+
+match alice {
+    Some(score) => println!("alice got {}", score),
+    None        => println!("alice not in the map"),
+}
+
+// Common shorthands instead of writing match by hand:
+let s        = alice.copied().unwrap_or(0);      // value or fallback
+let doubled  = alice.map(|x| x * 2);             // transform if Some
+let exists   = alice.is_some();                  // → bool`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`Result<T, E>\` is the standard library's "operation might succeed with a \`T\`, or fail with an \`E\`."  Two variants: \`Ok(T)\` for success, \`Err(E)\` for failure.  Reach for \`Result\` when the caller needs to know *why* something failed (parsing, I/O, anything that can go wrong in interesting ways); reach for \`Option\` when the only outcomes are "got it" and "didn't."  On this page, \`bellman_ford\` returns a \`Result\` — \`Ok\` carries the table of shortest distances, \`Err\` signals a negative cycle (no shortest path exists because you could loop the cycle forever).  The wrapper here re-packages the error as a plain string because the caller does not need the full detail.`,
+        code: `enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+// Typical use — parse a string as an integer.
+let parsed: Result<i32, _> = "42".parse();
+match parsed {
+    Ok(n)  => println!("got the number {}", n),
+    Err(e) => println!("not a number: {}", e),
+}
+
+// Page 9's use — bellman_ford returns Result<Paths, NegativeCycle>.
+match bellman_ford(fx, from) {
+    Ok(_paths) => Ok(()),                                  // no arbitrage
+    Err(_)     => Err("negative cycle — arbitrage exists"),
+}
+
+// Rule of thumb:
+//   Option<T>     ← "is the value here or not?"
+//                   null, missing key, no match, empty list
+//   Result<T, E>  ← "did the operation work, and if not, why?"
+//                   parsing, I/O, math errors, validation failures`,
         lang: 'rust'
       }
     ],
@@ -359,6 +774,44 @@ fn travel_matrix(zones: &DiGraph<&str, u32>)
         .expect("no negative cycles in travel times")
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `If \`NodeIndex\` has been showing up since page 7 without an introduction, here it is.  A \`NodeIndex\` is petgraph's **handle** for a node — a small, cheap-to-copy ID the library hands you when you add a node, which you then pass back to every subsequent operation that needs to refer to that node.  It is NOT the node's payload (the \`&str\` label, the \`Customer\` struct, whatever you stored).  Internally, petgraph keeps nodes in a \`Vec<T>\` — that's Rust's growable list type (we saw it back in the schedule checker), a contiguous block of values indexed by integers \`0, 1, 2, …\`.  When people say "vector" in Rust they mean \`Vec\`, not the math-class arrow.  \`NodeIndex\` is a wrapper around the integer position into that \`Vec\`.  That's why every graph operation is \`O(1)\`, why the stored values don't need to be hashable or unique, and why this page can key a \`HashMap<(NodeIndex, NodeIndex), u32>\` on node-pair tuples to a distance.  Two named nodes can carry identical labels; their \`NodeIndex\` handles are still distinct.`,
+        code: `use petgraph::graph::{DiGraph, NodeIndex};
+use std::collections::HashMap;
+
+let mut g = DiGraph::<&str, u32>::new();
+
+// add_node returns the handle for the node you just stored.
+let a: NodeIndex = g.add_node("Alice");    // NodeIndex(0)
+let b: NodeIndex = g.add_node("Bob");      // NodeIndex(1)
+let c: NodeIndex = g.add_node("Carol");    // NodeIndex(2)
+
+// Every subsequent operation takes the handle, never the label.
+g.add_edge(a, b, 5);
+g.add_edge(b, c, 3);
+
+// Look up the stored payload from the handle:
+let name = g[a];                            // → "Alice"
+
+// NodeIndex is Copy + Eq + Hash, so it works as a HashMap key.
+let mut distances: HashMap<NodeIndex, u32> = HashMap::new();
+distances.insert(a, 0);
+distances.insert(b, 5);
+
+
+// Mental model:
+//
+//   internal Vec of node payloads:
+//     index 0  →  "Alice"
+//     index 1  →  "Bob"
+//     index 2  →  "Carol"
+//
+//   NodeIndex(1)  ─is the address of─►  index 1  ←  "Bob"'s payload
+//
+// The label is data the graph happens to be storing at that slot.
+// The NodeIndex is how you refer to the slot.`,
+        lang: 'rust'
       }
     ],
     tldr: 'When you need the distance from every point to every other point — not just one start — there is a one-page algorithm that handles it.',
@@ -391,6 +844,44 @@ use petgraph::graph::UnGraph;
 
 fn cheapest_fiber(sites: &UnGraph<&str, u32>) -> UnGraph<&str, u32> {
     UnGraph::from_elements(min_spanning_tree(sites))
+}`,
+        lang: 'rust'
+      },
+      {
+        prose: `A **turbofish** is the syntax \`::<T>\` — Rust's way of specifying generic type parameters at a callsite.  Most of the time the compiler infers generic parameters from context, so you do not write the turbofish; it is the escape hatch for when inference is not enough.  The name is folklore: \`::<>\` looks like a tiny fish swimming to the right — two dots for eyes, angle brackets for fins.  The call \`UnGraph::from_elements(min_spanning_tree(sites))\` above works *without* a turbofish because the function signature \`-> UnGraph<&str, u32>\` pins down the type parameters for inference.  Strip the signature away and the turbofish has to surface.`,
+        code: `// Anatomy:
+//
+//        parse :: < i32 > ()
+//        ───── ━━ ━━━━━━━ ──
+//        name      type    call
+//              ┗━━━━━┳━━━━┛
+//                    └─ turbofish:  ::<T>
+//
+// Two dots (eyes), two angle brackets (fins).  ><> ::<T>
+
+// Two places it commonly appears:
+
+// 1.  parse() — the return type is the only thing that decides which
+//     parser to call, and the compiler can't always infer it.
+let n = "42".parse::<i32>().unwrap();      // turbofish on parse
+let n: i32 = "42".parse().unwrap();        // or annotate the binding
+
+// 2.  collect() — the iterator gives no hint about which container
+//     you want to materialise into.
+let v = (1..=5).collect::<Vec<i32>>();     // turbofish on collect
+let v: Vec<i32> = (1..=5).collect();       // or annotate the binding
+
+// Page 11's call works without it because the function's return type
+// pins down the generics:
+fn cheapest_fiber(sites: &UnGraph<&str, u32>) -> UnGraph<&str, u32> {
+    UnGraph::from_elements(min_spanning_tree(sites))   // inferred
+}
+
+// Same thing written with the turbofish — equivalent, more verbose:
+fn cheapest_fiber_explicit(sites: &UnGraph<&str, u32>) -> UnGraph<&str, u32> {
+    UnGraph::<&str, u32>::from_elements(min_spanning_tree(sites))
+//           ▲▲▲▲▲▲▲▲▲▲▲▲
+//           the turbofish
 }`,
         lang: 'rust'
       }
@@ -427,6 +918,42 @@ fn max_throughput(network: &DiGraph<&str, u32>, source: NodeIndex, sink: NodeInd
     flow
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `Three things happen on that \`let\` line.  First, \`ford_fulkerson\` returns a **tuple** — two values bundled together in one return, no struct required.  Tuples are Rust's anonymous "this thing and that thing" type, written with parentheses: the return type here is \`(u32, Vec<EdgeFlow>)\`.  The first slot is the maximum flow (the bottleneck capacity, the answer to "how much can move"); the second is the per-edge flow table you would need if you wanted to actually route the flow.  Second, the \`let (flow, _flows) = …\` syntax is **destructuring**: the parentheses on the left of \`=\` mirror the tuple's shape, and each name binds to one slot.  Third, the **underscore prefix** on \`_flows\` is the convention for "I am intentionally not using this — do not warn me about an unused variable."  A bare \`_\` discards entirely; \`_flows\` keeps the binding (mostly for documentation, so the reader knows what lives in slot two) without consuming the compiler's attention.`,
+        code: `// A tuple is N values bundled with parentheses.
+let point: (i32, i32)        = (3, 4);
+let pair:  (String, bool)    = (String::from("hi"), true);
+
+// Functions can return tuples — bundle several results without
+// inventing a struct for them.
+fn dimensions() -> (u32, u32) {
+    (1920, 1080)
+}
+
+// Destructuring: the parentheses on the left mirror the tuple
+// shape on the right; each name binds to one position.
+let (width, height) = dimensions();
+// width = 1920, height = 1080
+
+// Underscore prefix on a name — "I'm not using this, don't warn."
+let (width, _height) = dimensions();
+//          └─────── compiler stays quiet; binding still exists
+
+// Bare underscore — discard entirely, no binding created.
+let (width, _) = dimensions();
+
+// Why _flows instead of bare _ on page 12?  Documentation.
+// The name tells the reader what would have lived in slot two.
+let (flow, _flows) = ford_fulkerson(network, source, sink);
+//   ─────  ──────
+//    │       └── per-edge flow table — held alive, unused
+//    └────────── the answer: bottleneck capacity, the max flow
+
+// To actually route the flow, drop the underscore and use it:
+let (flow, flows) = ford_fulkerson(network, source, sink);
+for edge_flow in &flows { /* ... */ }`,
+        lang: 'rust'
       }
     ],
     tldr: 'How much water can flow through a network of pipes — and where the bottleneck is — is solved.  Many surprising business problems reduce to this.',
@@ -458,6 +985,89 @@ fn assign_jobs(cost: Vec<Vec<i32>>) -> (i32, Vec<usize>) {
     let m = Matrix::from_rows(cost).expect("square cost matrix");
     kuhn_munkres_min(&m) // (total_cost, assignment[worker] = job)
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`.expect(msg)\` is the "if this fails, crash with this message" method on \`Result\` and \`Option\`.  For \`Ok(x)\` it returns \`x\`; for \`Err(_)\` it **panics**, printing \`msg\` on the way out.  Use it when the failure case is a *programming bug* — something that should never happen at runtime, and if it does you want to crash loudly rather than silently keep going on corrupt data.  Here, \`Matrix::from_rows\` only fails when the input rows have unequal lengths; if upstream code has already validated the shape, that case is impossible, and \`.expect("square cost matrix")\` documents the assumption.  The alternative is the **\`?\` operator** — "if this is \`Err\`, return early from the *containing function* with that error; otherwise unwrap and continue."  \`?\` requires the containing function to return a compatible \`Result\`, so swapping \`.expect\` for \`?\` is a function-signature change, not a one-line edit.`,
+        code: `// ── .expect — panics on Err with a message ────────────────────
+fn assign_jobs_panic(cost: Vec<Vec<i32>>) -> (i32, Vec<usize>) {
+    let m = Matrix::from_rows(cost).expect("square cost matrix");
+    //                              └──────── if rows are uneven,
+    //                                        the program crashes here
+    //                                        with the message printed
+    //                                        and a stack trace.
+    kuhn_munkres_min(&m)
+}
+
+// ── ? operator — bubbles the Err up to the caller ─────────────
+//
+// The function's return type has to become Result for ? to work.
+use pathfinding::matrix::MatrixFormatError;
+
+fn assign_jobs_fallible(cost: Vec<Vec<i32>>)
+    -> Result<(i32, Vec<usize>), MatrixFormatError>
+{
+    let m = Matrix::from_rows(cost)?;
+    //                            └── on Err, return early from the
+    //                                whole function with that Err.
+    //                                on Ok, unwrap and continue.
+    Ok(kuhn_munkres_min(&m))
+}
+
+// Compare:
+//   .expect("…")  →  fail loudly, terminate the program.
+//                    Use when failure means a bug in our code.
+//   ?             →  fail quietly, return Err to the caller.
+//                    Use when failure is a legitimate runtime
+//                    condition the caller should handle.
+
+// One more variant worth knowing — .unwrap() is .expect() without
+// a message.  Convenient for prototypes; .expect() is strictly
+// better for production code because the panic prints useful text.`,
+        lang: 'rust'
+      },
+      {
+        prose: `One important caveat.  The \`.expect\` and \`.unwrap\` calls throughout this book make great **examples** — they fit on one line, name the failure case, and put the fallible operation on display.  They are **bad to copy-paste into a library**.  A library has no business deciding how its caller responds to failure; panicking inside library code crashes the entire process for what may be a perfectly recoverable condition.  The rule for any code you publish as a crate, or any code called by code you do not own, is the same: every fallible operation returns a \`Result\`, the function signature reflects that, and the caller decides whether to retry, fall back, or propagate.  Application code (\`main\`, binaries, integration tests) is allowed to panic for genuinely unrecoverable conditions — there is no caller above you, so the process crashing is the only thing left to do.  The \`thiserror\` crate makes the library pattern convenient: you derive \`std::error::Error\` and the formatting boilerplate, and the only thing you write is the variants and their messages.`,
+        code: `// ── Library code — never panics, returns Result ────────────────
+use thiserror::Error;
+use pathfinding::matrix::MatrixFormatError;
+
+#[derive(Debug, Error)]
+pub enum AssignError {
+    #[error("cost matrix rows have unequal lengths")]
+    NotRectangular(#[from] MatrixFormatError),
+
+    #[error("matrix must be square: got {rows}×{cols}")]
+    NotSquare { rows: usize, cols: usize },
+}
+
+pub fn assign_jobs(cost: Vec<Vec<i32>>)
+    -> Result<(i32, Vec<usize>), AssignError>
+{
+    let m = Matrix::from_rows(cost)?;     // ? converts MatrixFormatError
+                                           //   via the #[from] above.
+    if m.rows != m.columns {
+        return Err(AssignError::NotSquare {
+            rows: m.rows, cols: m.columns,
+        });
+    }
+    Ok(kuhn_munkres_min(&m))
+}
+
+// ── Application code — .expect is fine here ───────────────────
+fn main() {
+    let cost = vec![vec![12,  8, 20],
+                    vec![ 9, 15, 11],
+                    vec![14, 10,  7]];
+    let (total, picks) = assign_jobs(cost).expect("known good input");
+    println!("total = {}, picks = {:?}", total, picks);
+}
+
+// Rule:
+//   library code      → return Result, never panic.  thiserror
+//                       reduces a custom error type to one derive.
+//   application code  → .expect / .unwrap fine for cases the
+//                       binary author has decided are unrecoverable.`,
         lang: 'rust'
       }
     ],
@@ -492,6 +1102,119 @@ fn roommate_pairs(compat: &UnGraph<&str, ()>) -> Vec<(&str, &str)> {
         .map(|(a, b)| (compat[a], compat[b]))
         .collect()
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `Page 4 introduced \`&str\` as "a read-only view into someone else's bytes."  The graph on this page carries \`&str\` labels — borrowed strings, owned by whoever built the graph.  Rust has a second string type, \`String\`, which **owns** its bytes on the heap, and the choice between the two is one of the most consequential decisions in any Rust API.  Beginners reach for \`String\` everywhere because it is the more permissive type — and pay for it on every parameter pass, every clone, every function boundary.  The rule of thumb that experienced Rust programmers internalise: **take \`&str\` for parameters, return \`String\` when you constructed new text, hold \`String\` in a struct only when the struct should own its text**.  Reaching for the easiest-to-remember type — \`String\` everywhere — produces APIs that allocate on every call and force callers to clone literals they could have borrowed.  Thinking carefully about how a series of \`char\`s flows through your code is the work.`,
+        code: `// Two string types, two different jobs.
+
+let owned:  String       = String::from("hello"); // owns bytes on the heap
+let view:   &str         = &owned;                // borrow into owned's bytes
+let literal: &'static str = "hello";              // bytes baked into the binary
+
+
+// ── Parameters: prefer &str — borrows, no allocation ──────────
+fn greet(name: &str) -> String {
+    format!("Hello, {}!", name)        // returns a NEW String
+}
+
+greet("Andy");                          // literal is &str ✓
+greet(&owned);                          // &String coerces to &str ✓
+greet(&owned[1..4]);                    // slicing a String yields &str ✓
+
+
+// ── The trap: needlessly demanding ownership ──────────────────
+fn greet_owns(name: String) -> String {        // takes ownership
+    format!("Hello, {}!", name)
+}
+
+greet_owns("Andy".to_string());          // had to allocate the literal
+greet_owns(owned.clone());               // had to deep-copy the String
+//                  └─ every caller pays for the easy signature.
+
+
+// ── Struct fields: pick based on lifetime ─────────────────────
+struct Customer {
+    name:   String,         // Customer should own its name — String.
+    region: &'static str,   // region is one of a fixed set of tags — interned literal.
+}
+
+struct CustomerView<'a> {
+    name:   &'a str,        // view into a name owned somewhere else.
+}
+
+
+// ── Rule of thumb ─────────────────────────────────────────────
+//   parameters      →  &str   (borrow; no allocation)
+//   return values   →  String when you constructed new text
+//                      &str   when you're returning a view into existing bytes
+//   struct fields   →  String when the struct should own
+//                      &str   (with a lifetime) when it borrows`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`()\` is Rust's **unit type** — a tuple with zero elements.  It carries no information and takes zero bytes.  You use it whenever a slot in the type system needs to be filled but has nothing to say.  On this page, \`UnGraph<&str, ()>\` declares a graph whose nodes carry \`&str\` labels and whose edges carry \`()\` because there is no weight to attach — two roommates are either compatible or not, no extra data needed.  You also see \`()\` as the return type of functions that produce no value, and as the success type of \`Result<(), Error>\` where only the error is interesting.`,
+        code: `// () — zero-element tuple, zero bytes, no information.
+
+// As the edge type when there's nothing to attach to an edge:
+let g: UnGraph<&str, ()> = UnGraph::new_undirected();
+//                   └── edges carry no weight — "they're connected" is the only fact
+
+// As a function return type — "I finished successfully, no value":
+fn save_to_disk(data: &[u8]) -> () { /* ... */ }     // explicit
+fn save_implicit(data: &[u8])      { /* ... */ }     // same thing — () is the default
+
+// As the Ok variant of Result when only failure is interesting:
+fn validate(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        Err("name is empty".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+// Three equivalent ways to write a no-value function:
+fn a() -> () { () }
+fn b() -> () {  }
+fn c()        {  }`,
+        lang: 'rust'
+      },
+      {
+        prose: `The body of \`roommate_pairs\` is the **iterator chain** idiom — Rust's adoption of the functional-programming pipeline (\`map\`, \`filter\`, \`fold\`, \`collect\`).  An **iterator** is a lazy sequence: it produces values one at a time on demand, doing no work until something asks.  \`.map(f)\` returns a new iterator that yields \`f(x)\` for each \`x\` of the original — still lazy, still no work done.  \`.collect()\` is the **terminal** step that finally pulls the chain — it consumes the iterator and gathers the values into a concrete collection (a \`Vec\`, a \`HashMap\`, a \`String\`, whichever you ask for).  The whole chain compiles down to a single loop — there is no per-step allocation, no intermediate \`Vec\`.  This is the standard way to transform a collection in Rust and a much better default than a hand-written \`for\` loop with \`Vec::push\`.`,
+        code: `// The page 14 chain, broken down:
+let pairs: Vec<(&str, &str)> = m.edges()             // iterator of (NodeIndex, NodeIndex)
+    .map(|(a, b)| (compat[a], compat[b]))            // → iterator of (&str, &str)
+    .collect();                                       // pull the chain → Vec<(&str, &str)>
+
+
+// Equivalent imperative version — works, but more code and more state:
+let mut pairs: Vec<(&str, &str)> = Vec::new();
+for (a, b) in m.edges() {
+    pairs.push((compat[a], compat[b]));
+}
+
+
+// Common iterator combinators (all lazy until a terminal is called):
+let evens: Vec<i32> = (1..=10).filter(|n| n % 2 == 0).collect();
+//                              └── keep only elements matching the predicate
+
+let squared: Vec<i32> = (1..=5).map(|n| n * n).collect();
+//                              └── transform each element
+
+let total: i32 = (1..=10).sum();                          // terminal: add
+let count: usize = (1..=10).filter(|n| n % 3 == 0).count(); // terminal: count
+
+// fold — generalises sum/count/max/min: an initial value and an accumulator.
+let product: i32 = (1..=5).fold(1, |acc, n| acc * n);     // 120
+
+
+// Why the chain is the right default:
+//   1. Reads top-to-bottom as "what we're doing to the data."
+//   2. The compiler fuses adjacent operations — no temporary Vecs.
+//   3. Mistakes that are easy in a for/push loop (off-by-one, wrong
+//      mutation order) don't have room to happen.
+//   4. The same chain works whether the source is a Vec, a slice,
+//      a HashMap, a file's lines, or a channel.`,
         lang: 'rust'
       }
     ],
@@ -539,6 +1262,156 @@ fn two_sat_feasible(n: usize, clauses: &[(i32, i32)]) -> bool {
     (0..n).all(|v| comp[2 * v] != comp[2 * v + 1])
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `Now that the turbofish primer is on page 11, here is a real use of it.  \`DiGraph::new()\` returns a \`DiGraph<N, E>\` whose node and edge types are inferred from how the graph is later used.  But this graph starts *empty* — there is nothing yet for the compiler to infer from, and Rust's type inference is mostly local (it does not look across the whole function).  Plain \`DiGraph::new()\` would error with "type annotations needed."  The turbofish \`::<(), ()>\` pins the type at the construction site: both nodes and edges carry the unit type \`()\` (page 14) because the graph structure itself carries all the information — no payloads needed.  The alternative is to annotate the binding instead of the call.`,
+        code: `// Empty graph — compiler has nothing to infer from.
+let mut g = DiGraph::new();                  // error: type annotations needed
+
+// Two ways to give inference what it needs — pick one:
+let mut g = DiGraph::<(), ()>::new();        // turbofish at the call site
+let mut g: DiGraph<(), ()> = DiGraph::new(); // annotate the binding
+
+// Once nodes are added with concrete types, no annotation is needed:
+let mut g = DiGraph::new();
+let a = g.add_node("Alice");                  // ← N inferred as &str here
+let b = g.add_node("Bob");
+g.add_edge(a, b, 5u32);                       // ← E inferred as u32 here`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`let nodes: Vec<_> = …\` — the underscore in \`Vec<_>\` is the **type-inference placeholder**: "compiler, fill this in for me."  It is NOT the unit type \`()\`; the unit type already shows up nearby as the argument to \`add_node(())\`.  Two unrelated underscores live on the same line: the \`_\` inside \`Vec<_>\` asks the compiler to infer the element type (which is \`NodeIndex\`, what \`add_node\` returns), and the \`|_|\` is a closure parameter that discards its input.  Writing \`Vec<NodeIndex>\` would also work but is more brittle — \`Vec<_>\` says "give me the right thing, whatever it is."`,
+        code: `let nodes: Vec<_> = (0..2 * n)
+    .map(|_| g.add_node(()))
+    .collect();
+//   │       │         │
+//   │       │         └── () the unit VALUE — the empty payload our nodes carry
+//   │       └──────────── |_| closure ignores its input; we want add_node's
+//   │                     side effect 2n times, not the integer it was given
+//   └──────────────────── Vec<_> — infer the element type
+
+// Types in this chain:
+//   (0..2*n)                  Range<usize>          iter of usize
+//   .map(|_| g.add_node(()))  Map<…>                iter of NodeIndex
+//   .collect()                                       Vec<NodeIndex>
+
+// Vec<_> vs Vec<()>:
+let xs: Vec<_>  = vec![1, 2, 3];     // compiler infers Vec<i32>
+let ys: Vec<()> = vec![(), (), ()];  // a Vec of zero-byte units — explicit, rare`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`if lit > 0 { 2 * v } else { 2 * v + 1 }\` is **\`if\` as an expression**.  In Rust \`if/else\` is not a statement that produces no value — it is an expression that evaluates to whichever branch ran, and both branches must produce the same type.  Rust has no ternary operator (\`?:\`) because \`if\` already fills that role.  The last expression in any block is its value as long as you do not end it with a semicolon.`,
+        code: `// if/else as a value-producing expression:
+let v: usize = if lit > 0 { 2 * v } else { 2 * v + 1 };
+//                          ─────         ───────────
+//                          both branches produce usize → the whole expression is usize
+
+// Equivalent to other languages' ternary:
+//   v = (lit > 0) ? (2 * v) : (2 * v + 1);
+
+// Chains with else if:
+let label = if score >= 90      { "A" }
+            else if score >= 80 { "B" }
+            else if score >= 70 { "C" }
+            else                { "F" };
+
+// As a function return — last expression, no semicolon:
+fn parity(n: i32) -> &'static str {
+    if n % 2 == 0 { "even" } else { "odd" }
+}
+
+// Both branches must agree on type:
+let x = if cond { 1 } else { "two" };   // error: i32 vs &str`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`lit.unsigned_abs() as usize - 1\` does three things in one line.  \`unsigned_abs()\` is an \`i32\` method that returns the absolute value as \`u32\` — handling \`i32::MIN\` correctly (whose true absolute value does not fit in \`i32\`, which is why plain \`.abs()\` would overflow there).  \`as usize\` is an explicit cast from \`u32\` to \`usize\`.  And \`- 1\` adjusts for the 1-based indexing convention in CNF format — variable \`1\` becomes array index \`0\`.  **\`usize\` is the pointer-sized unsigned integer** — 64 bits on a 64-bit machine, 32 bits on a 32-bit machine.  It is the type used for array indexing, lengths, and counts because it can always represent any valid index into memory.  Rust never implicitly converts between integer types; you write \`as\` explicitly every time.`,
+        code: `// lit.unsigned_abs() as usize - 1
+//     ─────────────   ───────  ───
+//        method        cast    1-based → 0-based offset
+
+let lit: i32 = -3;
+let abs: u32 = lit.unsigned_abs();    // 3   (works even for i32::MIN)
+let v:   usize = abs as usize - 1;    // 2   (variable 3 → array index 2)
+
+// usize compared to the fixed-width integers:
+//
+//   usize     pointer-sized unsigned — the type for indexes, lengths, counts.
+//             64 bits on 64-bit machines, 32 bits on 32-bit machines.
+//   u32, u64  fixed-width unsigned integers; use when the wire format
+//             or domain requires a specific size.
+//   i32       signed 32-bit integer.  Default for arithmetic when no
+//             domain constraint says otherwise.
+
+let len: usize = vec.len();           // .len() always returns usize
+let first      = vec[0];              // indexing expects usize
+
+// No implicit conversion — the compiler refuses without an explicit cast:
+let n: u32 = 5;
+let i: usize = n;                     // error: expected usize, found u32
+let i: usize = n as usize;            // explicit — fine`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`for &(a, b) in clauses\` is two things at once.  First, \`for x in iterable\` is Rust's loop syntax — it calls \`iterable.into_iter()\` (or \`.iter()\` for a \`&slice\`), binds each yielded value to the pattern on the left, runs the body, and stops when the iterator yields \`None\`.  Second, the pattern \`&(a, b)\` is **destructuring through a reference**.  Iterating \`clauses\` (which is \`&[(i32, i32)]\`) yields \`&(i32, i32)\` references; the pattern \`&(a, b)\` reaches *past* the reference and copies the two \`i32\` values out into \`a\` and \`b\`.  This is only legal because \`i32\` is \`Copy\` — a type whose values are cheap to duplicate.`,
+        code: `let clauses: &[(i32, i32)] = &[(1, -2), (-1, 3)];
+
+// Three equivalent ways to walk the slice:
+
+// 1. Bind each element to a reference:
+for pair in clauses {
+    let (a, b) = pair;           // a, b are &i32 (references)
+}
+
+// 2. Destructure but bind to references:
+for (a, b) in clauses {
+    // a, b are &i32 — works, but every use of a or b needs *a or *b
+}
+
+// 3. Destructure AND copy the inner values out — the page 15 pattern:
+for &(a, b) in clauses {
+    // a, b are i32 — clean to use; only works if the inner type is Copy
+}
+
+// What for/in expands to:
+//
+//   for x in collection { body }
+//
+//   ≡   let mut it = collection.into_iter();   // .iter() if collection is &T
+//       while let Some(x) = it.next() { body }
+//
+// Anything implementing IntoIterator works — Vec, slice, HashMap, Range,
+// your own type, channels, file lines, anything.`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`(0..n)\` is a **range** — Rust's lightweight iterator that yields \`0, 1, 2, …, n-1\` (half-open; the end is *not* included).  \`0..=n\` is the inclusive version.  Ranges implement \`Iterator\`, so every iterator combinator works on them.  \`.all(predicate)\` is a terminal combinator: it returns \`true\` if every yielded value satisfies the predicate, and \`false\` as soon as it sees one that fails (short-circuiting — it stops asking the iterator for more).  Together, \`(0..n).all(|v| comp[2*v] != comp[2*v+1])\` reads as "for every variable \`v\` in \`0..n\`, the literal and its negation live in different strongly-connected components."  If even one variable violates that, the 2-SAT formula is unsatisfiable.`,
+        code: `// Ranges:
+let r = 0..5;                          // half-open: 0, 1, 2, 3, 4   (NOT 5)
+let s = 0..=5;                         // inclusive: 0, 1, 2, 3, 4, 5
+
+// Ranges are iterators — every combinator from page 14 works:
+let sum: i32 = (1..=10).sum();                          // 55
+let evens: Vec<i32> = (1..=10).filter(|n| n % 2 == 0).collect();
+
+// .all(predicate) — true iff every element satisfies it; short-circuits.
+let all_positive = (1..=10).all(|n| n > 0);             // true
+let all_even     = (1..=10).all(|n| n % 2 == 0);        // false (stops at 1)
+
+// Companion: .any(predicate) — true if at least one element satisfies it.
+let any_huge = (1..=10).any(|n| n > 5);                 // true
+
+// Page 15's usage:
+//
+//     (0..n).all(|v| comp[2 * v] != comp[2 * v + 1])
+//      ──── ───  ────────────────────────────────────
+//      iter of   for every v, the literal v and its negation ¬v
+//      0..n      must live in different strongly-connected components
+//
+// If ANY variable has both in the same SCC, .all() returns false
+// and the function returns false — the formula is unsatisfiable.`,
+        lang: 'rust'
       }
     ],
     tldr: 'When every rule in the system is "if A then B" — exactly two-piece constraints — there is a linear-time check whether the rules are satisfiable.',
@@ -569,6 +1442,63 @@ use petgraph::graph::{DiGraph, NodeIndex};
 fn build_order(deps: &DiGraph<&str, ()>) -> Result<Vec<NodeIndex>, NodeIndex> {
     toposort(deps, None).map_err(|cycle| cycle.node_id())
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`.map_err(f)\` is the **error-side counterpart of \`.map(f)\`**.  Where \`.map(f)\` transforms the success value of a \`Result\` (\`Ok(t) → Ok(f(t))\`), \`.map_err(f)\` transforms the error value (\`Err(e) → Err(f(e))\`).  \`Ok\` cases pass through unchanged.  Here, \`toposort\` returns \`Result<Vec<NodeIndex>, Cycle>\` — a rich error type carrying one node from the cycle plus internal bookkeeping.  The wrapper simplifies that to just the offending node's index (\`NodeIndex\`), which is all most callers actually need.  Use \`map_err\` whenever you want to swap one error type for another without touching the \`Ok\` path — typically when a library's error type is richer than your own API needs to expose.`,
+        code: `// .map_err(f) — transform only the Err side of a Result.
+//
+//   Result<T, E1>            .map_err(|e| f(e))            Result<T, E2>
+//
+//   Ok(t)              ────►  passes through        ────►  Ok(t)
+//   Err(e)             ────►  Err(f(e))             ────►  Err(f(e))
+
+let parsed: Result<i32, std::num::ParseIntError> = "abc".parse();
+
+let with_message: Result<i32, String> =
+    parsed.map_err(|e| format!("bad number: {}", e));
+
+// Page 16's use — narrow a rich error type to a simpler one the API exposes:
+fn build_order(deps: &DiGraph<&str, ()>) -> Result<Vec<NodeIndex>, NodeIndex> {
+    toposort(deps, None)                            // Result<Vec<NodeIndex>, Cycle>
+        .map_err(|cycle| cycle.node_id())            // Result<Vec<NodeIndex>, NodeIndex>
+}
+
+// The Result-transformer family:
+//   .map(f)       →  Ok side: Ok(t)  → Ok(f(t))
+//   .map_err(f)   →  Err side: Err(e) → Err(f(e))
+//   .and_then(f)  →  Ok side: Ok(t)  → run f and return its Result   (chain fallible ops)
+//   .or_else(f)   →  Err side: Err(e) → run f and return its Result   (try a recovery)`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`toposort\`'s second argument is an optional pre-allocated **workspace** (a \`DfsSpace\`).  Passing \`None\` says "I have no workspace — allocate one yourself, throw it away when done."  That is the right answer for almost every caller.  If you were running \`toposort\` in a hot loop where the allocation cost mattered, you would build a \`DfsSpace\` once and pass \`Some(&mut space)\` to every call — the library reuses the scratch buffers across invocations instead of allocating fresh each time.  This "bring your own buffer" pattern is common across performance-sensitive Rust libraries (petgraph, nalgebra, regex).  It is the library author's way of giving the caller a knob to turn without forcing every caller to think about it.`,
+        code: `// toposort signature (simplified):
+//
+//   fn toposort<G>(
+//       g: G,
+//       space: Option<&mut DfsSpace<G::NodeId, G::Map>>,
+//   ) -> Result<Vec<G::NodeId>, Cycle<G::NodeId>>;
+//
+//   ──────────  ─────────────────────────────────────
+//      graph    optional pre-allocated workspace
+
+// Casual usage — no workspace, library allocates internally:
+let order = toposort(&deps, None)?;
+
+// Hot-path usage — reuse one workspace across many calls:
+use petgraph::algo::DfsSpace;
+
+let mut space = DfsSpace::new(&deps);
+for graph in many_graphs {
+    let order = toposort(graph, Some(&mut space))?;
+    //                          ────────────────
+    //                          same buffer reused; no fresh alloc per call
+}
+
+// The "bring your own buffer" pattern:
+//   None              →  ergonomic default, library handles allocation
+//   Some(&mut buf)    →  caller controls allocation; reuse across calls`,
         lang: 'rust'
       }
     ],
@@ -602,6 +1532,144 @@ fn flag(text: &str, banned: &[&str]) -> Vec<(usize, String)> {
         .map(|m| (m.start(), banned[m.pattern()].to_string()))
         .collect()
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`&[&str]\` is a **slice of string slices, taken by reference**.  Three layers nested together: \`&str\` is one string slice (a view into bytes, page 4), \`[&str]\` is a sequence of those, and the outer \`&\` borrows the sequence.  Reading it inside-out: "a borrowed view of a sequence of borrowed string views."  This is the most permissive shape for "a list of read-only strings I want to scan."  Callers can pass an array literal directly (\`&["foo", "bar"]\`), or borrow a \`Vec<&str>\` (\`&patterns\`).  Taking \`&[&str]\` instead of \`Vec<String>\` means the function does not demand ownership of the patterns and the caller does not have to allocate.  It is the page-14 rule — parameters borrow, not own — applied to a list.`,
+        code: `// &[&str] decoded:
+//
+//      & [ &str ]
+//      ─ ─ ────
+//      │ │  │
+//      │ │  └── &str — one string slice (borrowed view of bytes)
+//      │ └──── [&str] — a sequence of string slices
+//      └────── & — a borrow of that sequence
+//
+// "A borrowed view of a sequence of borrowed string views."
+
+fn flag(text: &str, banned: &[&str]) -> Vec<(usize, String)> { /* ... */ }
+
+// Every one of these calls works:
+flag(input, &["secret", "password"]);              // array literal — most ergonomic
+flag(input, &vec!["secret", "password"]);          // Vec<&str> coerces to &[&str]
+
+let patterns: Vec<&str> = lines.iter().map(|l| l.trim()).collect();
+flag(input, &patterns);                            // borrow an existing Vec<&str>
+
+// Contrast with a shape that forces every caller to allocate:
+fn flag_owned(text: &str, banned: Vec<String>) { /* ... */ }
+flag_owned(input, vec!["secret".to_string(),
+                       "password".to_string()]);   // .to_string() per literal — wasteful
+
+// One subtle catch — &[String] does NOT auto-coerce to &[&str]:
+let owned: Vec<String> = vec!["secret".into(), "password".into()];
+flag(input, &owned);                                // ✗ type mismatch
+//
+// Fix: convert with .iter().map(String::as_str).collect::<Vec<&str>>().
+// Or accept the most flexible shape: &[impl AsRef<str>].
+// For most flagging APIs, &[&str] is the right default — literals are
+// the common case.`,
+        lang: 'rust'
+      },
+      {
+        prose: `The return type is \`Vec<(usize, String)>\` — each tuple holds the byte offset where the match started and a fresh \`String\` copy of the banned pattern.  Why \`String\` instead of \`&str\`?  Returning \`&str\` would work but only with an explicit lifetime tying the return value to the \`banned\` slice: the result would *point into* the input, and the caller would have to keep \`banned\` alive for as long as they held the result.  Returning \`String\` allocates a small fresh copy per match (a handful of bytes each, usually cheap), and the result is **self-contained** — callers can store it, drop \`banned\`, send the result across threads, serialize it to JSON.  This is the page-14 rule in action: return new text the caller should own (\`String\`); return a view tied to inputs (\`&str\` with a lifetime).  When the lifetime would make the API noticeably worse for downstream consumers, \`String\` is the right tradeoff.`,
+        code: `// What we have — self-contained result:
+fn flag(text: &str, banned: &[&str]) -> Vec<(usize, String)> {
+    let ac = AhoCorasick::new(banned).expect("valid patterns");
+    ac.find_iter(text)
+        .map(|m| (m.start(), banned[m.pattern()].to_string()))
+        //                                       └─ allocates a fresh String per match
+        .collect()
+}
+
+// Zero-allocation alternative — &str views tied to banned's lifetime:
+fn flag_borrowed<'a>(text: &str, banned: &'a [&'a str])
+    -> Vec<(usize, &'a str)>
+{
+    let ac = AhoCorasick::new(banned).expect("valid patterns");
+    ac.find_iter(text)
+        .map(|m| (m.start(), banned[m.pattern()]))
+        //                                  └─ no allocation; lifetime tied to banned
+        .collect()
+}
+
+// Tradeoffs:
+//
+//   Vec<(usize, String)>     self-contained.  caller can drop banned.
+//                            JSON-serialisable, thread-shippable, store anywhere.
+//                            one small allocation per match.
+//
+//   Vec<(usize, &'a str)>    zero allocation per match.
+//                            caller must keep banned alive while result is in use.
+//                            every consumer downstream has to think about lifetimes.
+//
+// For a flagging API where results get logged, stored, or sent to a worker,
+// the String variant is the friendlier shape.  The cost is a few bytes
+// copied per hit — usually invisible.`,
+        lang: 'rust'
+      },
+      {
+        prose: `Worth pausing on the word **borrow**, since it has been doing a lot of work for the last ten pages.  It is a deliberate metaphor in Rust, not just casual jargon.  Every value in a Rust program has exactly one **owner**; when the owner goes out of scope, the value is dropped — memory freed, file handles closed, locks released.  A **borrow** is what the English word suggests: temporary access to a value without transferring ownership.  You hand someone your book; they read it; they give it back; you still own it.  Two flavors: a **shared borrow** \`&T\` lets any number of readers see the value at once but lets nobody change it (many people reading the same poster).  An **exclusive borrow** \`&mut T\` gives one writer permission to mutate the value, and while it exists nobody else — not even the original owner — can read or write that value (one person editing a document).  The compiler enforces this "shared XOR mutable" rule at compile time, which is what the **borrow checker** does.  "Fighting the borrow checker" is the universal Rust-learner experience of running headlong into the rule.  The rules are stricter than other languages.  The payoff is that at runtime your program has no data races, no use-after-free, no iterator-invalidation crashes — every one of those bugs is turned into a compile error.`,
+        code: `// ── Ownership: every value has exactly one owner ──────────────
+let s = String::from("hello");
+let t = s;                       // ownership MOVES from s to t
+// println!("{}", s);            // error: borrow of moved value \`s\`
+
+
+// ── Borrow: temporary access, no ownership transfer ───────────
+let s = String::from("hello");
+let r = &s;                      // r BORROWS s — s still owns the bytes
+println!("{} {}", s, r);         // both readable; the data has not moved
+
+
+// ── Two flavors ───────────────────────────────────────────────
+
+// 1. Shared borrows (&T) — many readers, no writers.
+let s = String::from("hello");
+let a = &s;
+let b = &s;                      // fine — many shared borrows can coexist
+println!("{} {} {}", s, a, b);
+
+// 2. Exclusive borrows (&mut T) — one writer, no other readers.
+let mut s = String::from("hello");
+let m = &mut s;
+m.push_str(", world");           // can mutate through &mut
+// println!("{}", s);            // error: cannot use s while m exists
+println!("{}", m);               // ok — m is the one allowed reference
+
+
+// ── The rule the borrow checker enforces ─────────────────────
+//
+// At any point in the program, for any value, you may have EITHER:
+//
+//      • any number of shared borrows (&T)        OR
+//      • exactly one exclusive borrow (&mut T)
+//
+// Never both.  Never two &mut at once.
+//
+let mut s = String::from("hello");
+let a = &s;                      // shared borrow
+let b = &mut s;                  // error: cannot also borrow as mutable
+println!("{}", a);
+
+
+// ── "Fighting the borrow checker" — and how not to ───────────
+//
+// The fix is never to disable the checker.  The fix is to restructure
+// so the lifetimes are clearer:
+//
+//   • finish using the shared borrow, THEN take the mutable borrow
+//   • clone the data if two independent owners are actually what you want
+//   • split the data so two halves can be borrowed independently
+//   • thread the data through one owner instead of sharing
+//
+// What you buy by accepting the rules — at runtime, Rust programs do not have:
+//   • data races            (two threads writing the same value)
+//   • use-after-free        (reading freed memory)
+//   • iterator invalidation (modifying a collection while iterating it)
+//
+// All three are turned into compile errors.  The borrow checker is
+// the part of the compiler that does that work.`,
         lang: 'rust'
       }
     ],
@@ -644,6 +1712,112 @@ fn typo_distance(a: &str, b: &str) -> usize {
     damerau_levenshtein(a, b) // counts adjacent swaps as one edit
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `Page 4 introduced \`'static\` — the special "lives forever" lifetime.  Page 18 introduces a **named lifetime parameter**: \`<'a>\`.  The angle brackets are the same place where type generics live (\`<T>\`, \`<K, V>\`), and lifetime parameters are exactly that — **a kind of generic parameter**, on the lifetime axis instead of the type axis.  Where a type generic says "this function works for any type \`T\`," a lifetime generic says "this function works for any lifetime \`'a\`, and here is how the lifetimes of my parameters relate to each other and to my return value."  Convention puts lifetimes first inside the angle brackets: \`fn foo<'a, 'b, T, U>(...)\`.  The compiler infers concrete lifetimes at each call site from the references the caller passes in, exactly the way it infers concrete types for type generics.`,
+        code: `// Type generic — caller picks (or compiler infers) the type:
+fn first<T>(v: &[T]) -> Option<&T> {
+    v.first()
+}
+let n = first(&[1, 2, 3]);                  // T = i32
+let s = first(&["a", "b"]);                 // T = &str
+
+// Lifetime generic — caller picks (or compiler infers) the lifetime:
+fn longest<'a>(a: &'a str, b: &'a str) -> &'a str {
+    if a.len() > b.len() { a } else { b }
+}
+// The returned reference lives at most as long as the shorter of a, b.
+
+// Both kinds in one signature — lifetimes first, types second:
+fn pick<'a, T>(haystack: &'a [T], i: usize) -> &'a T {
+    &haystack[i]
+}
+
+// Same machinery, different axis:
+//
+//                      type generic        lifetime generic
+//   declaration        <T>                 <'a>
+//   used in            parameter / return  parameter / return
+//   chosen by          caller / inference  caller / inference
+//   meaning            "any type T"        "any lifetime 'a"
+//
+// Lifetimes do not exist at runtime — the compiler erases them.
+// They are entirely about compile-time relationships between borrows.`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`candidates: &'a [&'a str]\` reuses the same lifetime label \`'a\` in two positions, which **ties them together**.  The outer slice and the inner \`&str\` views must both live at least as long as \`'a\`.  Why unify them?  Because the function returns \`Option<&'a str>\` — a reference whose lifetime is \`'a\`.  The compiler needs to know the returned string is valid for at least that long, so the caller knows how long they can hang on to it.  If the slice itself or any of the strings inside it could disappear sooner than \`'a\`, the returned reference would dangle.  Tying both to one lifetime says "everything the result might point into shares the same lifetime budget."  An alternative — \`&'a [&'b str]\` — would use two separate lifetimes; more flexible but more to manage.  Unifying is the right default; revisit only if a real caller is blocked by the constraint.`,
+        code: `fn best_match<'a>(query: &str, candidates: &'a [&'a str]) -> Option<&'a str>
+//             ──                ───   ────                          ───
+//             declare 'a        slice  inner                        return
+//                               lives  &strs                        reference
+//                               'a     live 'a                      lives 'a
+
+// What the annotations promise the compiler:
+//   • the slice \`candidates\` is valid for at least 'a
+//   • each &str inside the slice is valid for at least 'a
+//   • the returned &str is valid for exactly 'a — caller can hold it that long
+
+// Two-lifetime alternative — more flexible, more to manage:
+fn best_match_2<'slice, 'item>(
+    query: &str,
+    candidates: &'slice [&'item str],
+) -> Option<&'item str>            // result tied to the items, not the slice
+where 'slice: 'item {              // and slice must outlive items
+    candidates.iter().min_by_key(|c| levenshtein(query, c)).copied()
+}
+
+// One-lifetime version (the page 18 code) is the usual default — pick the
+// stricter shape that's still ergonomic.  Reach for two only when a real
+// caller needs the slice and items to come from different scopes.
+
+// Note that \`query: &str\` has no annotation.  Lifetime elision (page 4)
+// fills in an anonymous one — the function does not return anything tied
+// to query, so its lifetime is independent and need not be named.`,
+        lang: 'rust'
+      },
+      {
+        prose: `The last line of \`best_match\` calls \`.copied()\`.  The name resembles the \`Copy\` **trait** introduced on page 15, and the two are related but not the same thing.  \`Copy\` is a property a type can implement, saying "bitwise duplication is safe for me."  \`.copied()\` is an **iterator method** that converts an iterator of \`&T\` into an iterator of \`T\` by copying each item — and it only compiles when the items being copied implement the \`Copy\` trait.  So the method *uses* the trait to do its job.  For types that need a deeper duplication (\`String\`, \`Vec<T>\`), the sibling method is \`.cloned()\`, which requires only the \`Clone\` trait and may allocate.
+
+The other unfamiliar type in this step is \`&&str\`.  Read right-to-left: \`str\` is the unsized string-of-bytes type, \`&str\` is a reference to one (the type we usually call a "string slice"), and \`&&str\` is a reference to a \`&str\` — two reference layers stacked.  This is **not** a reference to a slice (those look like \`&[T]\`); the two ampersands here are just \`&\` applied to \`&str\`.  The double layer arises because \`.iter()\` always yields references *to* the elements of a collection, and here the elements are themselves references — \`candidates\` is \`&[&str]\`, so iterating gives \`&&str\`.  \`.copied()\` strips one layer back, turning the iterator's output from \`&&str\` to \`&str\`.`,
+        code: `// Copy is a TRAIT — a property of a type.
+//   i32, bool, char, f64, &T    →  implements Copy
+//   String, Vec<T>, Box<T>      →  does NOT implement Copy
+
+// .copied() is a METHOD on Iterator<Item = &T> where T: Copy.
+// It dereferences and bit-copies each item, yielding an iterator of T.
+
+let v: Vec<i32> = vec![1, 2, 3];
+
+let refs:   Vec<&i32>  = v.iter().collect();              // iter of &i32
+let copies: Vec<i32>   = v.iter().copied().collect();     // iter of i32
+
+// Why we use it on page 18 — one fewer layer of reference for the caller.
+// candidates has type &[&str], so each element is already a &str.
+// .iter() yields references TO each element, stacking another & on top:
+//
+//   &&str  =  &(&str)         a reference to a string-slice reference.
+//                              Read right-to-left.  Not a slice reference
+//                              (those look like &[T]) — two & layers stacked.
+//
+//   candidates                                      &[&str]
+//   .iter()                                         iter of &&str
+//   .min_by_key(|c| levenshtein(query, c))          Option<&&str>   ← two & layers
+//   .copied()                                       Option<&str>    ← one stripped
+
+// The siblings:
+//   .copied()   →  requires Copy.   Pure bit-copy; never allocates.
+//   .cloned()   →  requires Clone.  May allocate (e.g. cloning a String).
+
+let strings: Vec<String> = vec!["a".into(), "b".into()];
+let owned: Vec<String> = strings.iter().cloned().collect();   // allocates each clone
+// let owned: Vec<String> = strings.iter().copied().collect(); // error: String: !Copy
+
+// Short version:
+//   Copy        →  a trait;  a property of a type.
+//   .copied()   →  a method; uses the Copy trait to turn &T into T.
+// They live next to each other and they are not the same thing.`,
+        lang: 'rust'
       }
     ],
     tldr: 'Edit distance — how many character changes between two strings — is solved by a single dynamic programming pass.  Spell check, diff, DNA alignment all use it.',
@@ -681,6 +1855,58 @@ fn cheapest_diet() -> (f64, f64, f64) {
     (sol.value(bread), sol.value(rice), sol.value(eggs))
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `The trailing exclamation point in \`variables!\` (and \`constraint!\` two lines below) marks them as **macros**, not regular function calls.  Rust macros are metaprogramming — they take code at compile time and transform it into other code before normal compilation runs.  The \`!\` is how Rust distinguishes a macro invocation from a function call; the rest of the call site looks similar.  Macros exist because some patterns cannot be expressed as ordinary functions: taking a variable number of arguments, accepting non-expression syntax like \`0 <= bread; 0 <= rice;\`, or declaring new variables in the caller's scope.  \`variables!\` does that last thing — it expands at compile time into a sequence of \`let\` bindings, one per variable name listed, plus a \`ProblemVariables\` builder.  A regular function call cannot introduce new local bindings into its caller, so this work has to happen via macro.  \`constraint!\` is a macro for a related reason: it parses an inequality expression with \`<=\` or \`>=\` in the middle, which is not how function arguments normally look.`,
+        code: `// Macros are marked with a trailing ! — the only syntactic difference
+// from a function call.
+println!("hello");        // macro
+format!("hi {}", name);   // macro
+vec![1, 2, 3];            // macro (and uses [] instead of ())
+assert_eq!(x, y);         // macro
+
+some_function(x);         // not a macro — no !
+
+
+// What variables! roughly expands to at compile time:
+
+variables! { vars: 0 <= bread; 0 <= rice; 0 <= eggs; }
+
+//  ≈
+
+let mut vars = ProblemVariables::new();
+let bread = vars.add(variable().min(0.0));
+let rice  = vars.add(variable().min(0.0));
+let eggs  = vars.add(variable().min(0.0));
+
+// A regular function CAN'T do this — function calls cannot introduce
+// new bindings (\`bread\`, \`rice\`, \`eggs\`) into their caller's scope.
+// Macros expand inline AT the call site, so the bindings appear
+// where they're written.
+
+
+// Two flavors of macro you'll meet in real Rust code:
+//
+//   macro_rules! NAME { ... }    declarative macros — pattern-match on
+//                                token trees.  vec!, println!, todo!.
+//
+//   #[derive(Debug)]              procedural macros — actual Rust code
+//   #[serde(rename = "x")]        that takes a TokenStream and returns
+//   sql!("SELECT ...")            one.  Includes #[derive], attribute
+//                                 macros, and function-like procedural
+//                                 macros (the !-call variety).
+
+
+// Common macros you'll see everywhere in Rust:
+//   println!  print!  eprintln!     formatted output
+//   vec!                              build a Vec inline
+//   format!                           build a String inline
+//   assert!  assert_eq!  assert_ne!   tests and runtime checks
+//   panic!                            crash with a message
+//   dbg!                              print + return — for debugging
+//   todo!  unimplemented!             placeholders that compile but panic
+//   write!  writeln!                  format into a Write target`,
+        lang: 'rust'
       }
     ],
     tldr: 'When the variables can be any real number — money, quantity, percentage — and the constraints are linear, the problem is solved at industrial scale.',
@@ -714,6 +1940,92 @@ fn ridge(x: &DMatrix<f64>, y: &DVector<f64>, lambda: f64) -> DVector<f64> {
     let b = xt * y;
     a.lu().solve(&b).expect("ridge is always solvable for lambda > 0")
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`DMatrix<T>\` and \`DVector<T>\` come from the **nalgebra** crate.  The leading "D" stands for **dynamic** — the dimensions (rows × columns for a matrix, length for a vector) are decided at runtime, and the storage lives on the heap.  Both let you write matrix algebra with operator overloading (\`+\`, \`-\`, \`*\` on whole matrices) the way the math reads.  nalgebra also ships statically-sized variants — \`Matrix3<T>\`, \`Vector3<T>\`, \`SMatrix<T, R, C>\` — where the dimensions are encoded in the type and the storage lives inline (no allocation, slightly faster).  Use the D-variants when the size depends on input data (a regression whose feature count comes from the data); use the static variants when the dimensions are fixed up front (a 3D position, a 4×4 transform, a small kernel).`,
+        code: `use nalgebra::{DMatrix, DVector};
+
+// DMatrix — dynamically-sized matrix, heap-allocated:
+let x: DMatrix<f64> = DMatrix::from_row_slice(3, 2, &[
+    1.0, 2.0,
+    3.0, 4.0,
+    5.0, 6.0,
+]);
+//                                            ─  ─
+//                                            │  └── 2 columns
+//                                            └───── 3 rows
+//
+// Three samples (rows), two features per sample (columns).
+
+// DVector — dynamically-sized column vector, heap-allocated:
+let y: DVector<f64> = DVector::from_vec(vec![1.0, 2.0, 3.0]);
+//                                            ─────────────
+//                                            3 elements
+//
+// One target per sample, three samples total.
+
+// Operations look like the math:
+let xt:     DMatrix<f64> = x.transpose();          // X^T
+let xtx:    DMatrix<f64> = &xt * &x;               // X^T X (matrix product)
+let xty:    DVector<f64> = &xt * &y;               // X^T y (matrix · vector)
+let scaled: DMatrix<f64> = &x * 2.0;               // scalar multiplication
+
+
+// Statically-sized variants — dimensions in the type, no allocation:
+use nalgebra::{Matrix3, Vector3};
+
+let m: Matrix3<f64> = Matrix3::new(
+    1.0, 2.0, 3.0,
+    4.0, 5.0, 6.0,
+    7.0, 8.0, 9.0,
+);
+let v: Vector3<f64> = Vector3::new(1.0, 2.0, 3.0);
+
+
+// When to use which:
+//
+//   DMatrix / DVector       size depends on input data.
+//                            regression, dynamic graphs, runtime-shaped maps.
+//
+//   Matrix3, Vector3,        size fixed at compile time.
+//   SMatrix<T, R, C>         3D geometry, fixed transforms, small kernels.`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`DMatrix::identity(n, n)\` constructs the n×n **identity matrix** — an n×n matrix with \`1.0\` on the diagonal and \`0.0\` everywhere else.  The name comes from its algebraic role: multiplying any matrix or vector by the identity leaves it unchanged.  \`I × A = A\`, the same way multiplying a number by 1 leaves it unchanged.  The identity is the matrix-algebra equivalent of the number \`1\` in ordinary arithmetic.  Here it appears in the ridge-regression formula: adding \`λI\` to \`X^T X\` is the **regularization** term.  Without it, \`X^T X\` can be **singular** (no inverse) and the linear system has no unique solution.  Adding a small multiple of the identity bumps every diagonal entry up by \`λ\`, which guarantees a clean solve and simultaneously penalizes large coefficient values.  Small \`λ\` ≈ ordinary least squares; large \`λ\` shrinks the solution toward zero.`,
+        code: `// The 3×3 identity:
+//
+//                  ┌  1  0  0  ┐
+//          I_3  =  │  0  1  0  │
+//                  └  0  0  1  ┘
+//
+// In nalgebra:
+let i: DMatrix<f64> = DMatrix::identity(3, 3);
+
+// The defining property — multiplying by identity changes nothing:
+let a: DMatrix<f64> = DMatrix::from_row_slice(3, 3, &[
+    2.0, 1.0, 3.0,
+    4.0, 0.0, 1.0,
+    1.0, 1.0, 1.0,
+]);
+let same = &i * &a;          // == a
+let same = &a * &i;          // == a
+
+// On page 20, identity is the regularizer for X^T X:
+//
+//   without regularization:  a  =  X^T X
+//                            X^T X can be singular — no inverse exists,
+//                            and the linear system has no unique solution.
+//
+//   ridge regularization:    a  =  X^T X  +  λI
+//                            every diagonal entry bumped up by λ.
+//                            guarantees a clean solve, and the λ knob
+//                            trades off fit against coefficient size.
+
+// The "1" of matrix algebra.  Just as x * 1 == x in ordinary arithmetic,
+// A · I == A in matrix algebra.  Identity is the multiplicative identity
+// element for matrix multiplication.`,
         lang: 'rust'
       }
     ],
@@ -751,6 +2063,98 @@ fn prime_check(n: &BigUint) -> bool {
 fn try_factor(n: &BigUint) -> std::collections::BTreeMap<BigUint, usize> {
     factorize(n.clone()) // fast for small n, infeasible for cryptographic n
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`BTreeMap<K, V>\` from the standard library is a **sorted associative map** — a key-value store like \`HashMap\`, but with keys kept in sorted order.  Implemented as a B-tree (the multi-way balanced tree used in databases and filesystems), it offers \`O(log n)\` lookups, inserts, and deletes, plus efficient range queries.  \`HashMap\` is faster on average — \`O(1)\` lookup — but gives no order guarantee.  The factorization here uses \`BTreeMap<BigUint, usize>\` so the result is sorted by prime: \`60 = 2² × 3 × 5\` comes back as the keys \`2, 3, 5\` in that order, which is what a reader expects.  Reach for \`BTreeMap\` when you need ordering, range scans, or deterministic iteration; reach for \`HashMap\` for raw lookup speed.`,
+        code: `use std::collections::{BTreeMap, HashMap};
+
+// BTreeMap — keys kept in sorted order:
+let mut counts: BTreeMap<&str, i32> = BTreeMap::new();
+counts.insert("zebra", 1);
+counts.insert("apple", 2);
+counts.insert("mango", 3);
+
+for (k, v) in &counts {
+    println!("{}: {}", k, v);
+    // apple: 2     ← sorted alphabetically
+    // mango: 3
+    // zebra: 1
+}
+
+// HashMap — no order guarantee:
+let mut counts: HashMap<&str, i32> = HashMap::new();
+counts.insert("zebra", 1);
+counts.insert("apple", 2);
+counts.insert("mango", 3);
+
+for (k, v) in &counts {
+    println!("{}: {}", k, v);
+    // mango: 3     ← order depends on the hash, not on insertion order
+    // apple: 2
+    // zebra: 1
+}
+
+// Range queries — only available because BTreeMap keys are sorted:
+let in_range: Vec<_> = counts.range("apple".."mango").collect();
+
+// Performance comparison:
+//   BTreeMap     O(log n) lookup / insert / delete.
+//                ordered iteration, range queries.
+//   HashMap      O(1) average lookup / insert / delete.
+//                no order, faster in absolute terms.
+//
+// Page 21 uses BTreeMap so the factorization output is deterministic
+// and reads naturally: factorize(60) = {2 → 2, 3 → 1, 5 → 1}.`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`factorize\` is one line at the callsite; the algorithms behind it are not.  The function combines several classical methods, picking which to use based on the size of the input.  **Trial division** strips small prime factors by trying \`2, 3, 5, 7, 11, …\` up to roughly \`√n\` — fast for small \`n\`, hopeless beyond about 30 digits.  **Pollard's rho** is a probabilistic cycle-detection algorithm that finds factors via a pseudo-random sequence; sub-exponential expected time, practical to about 25–30 digits per call.  **Pollard's p−1** finds factors \`p\` where \`p−1\` has only small prime factors — sometimes blazingly fast, sometimes useless.  The **elliptic curve method** generalises Pollard p−1 and is the tool of choice for peeling off medium-sized factors.  For very large composites, the **quadratic sieve** and the **general number field sieve** are the asymptotically best known classical algorithms.  None of these is polynomial-time.  GNFS, the fastest, has runtime \`exp((1.92 + o(1)) · (ln n)^(1/3) · (ln ln n)^(2/3))\` — sub-exponential, but still growing much faster than any polynomial in the digit count.  That's the whole bet: a 2048-bit RSA modulus would take longer than the age of the universe to factor on current hardware with GNFS.  Calling \`factorize\` on a small number returns instantly; calling it on a cryptographic number simply does not return.`,
+        code: `// What factorize() does internally, simplified:
+//
+// fn factorize(mut n: BigUint) -> BTreeMap<BigUint, usize> {
+//     let mut factors = BTreeMap::new();
+//
+//     // 1. Strip small prime factors by trial division.
+//     for p in [2, 3, 5, 7, 11, 13, ...] {
+//         while n % p == 0 {
+//             *factors.entry(p).or_insert(0) += 1;
+//             n /= p;
+//         }
+//         if p * p > n { break; }
+//     }
+//
+//     // 2. If the remaining cofactor is > 1, run probabilistic methods.
+//     while n > 1 {
+//         if is_prime(&n).probably() {
+//             *factors.entry(n.clone()).or_insert(0) += 1;
+//             break;
+//         }
+//         let factor = pollard_rho(&n)            // try fast methods first
+//                     .or(pollard_p_minus_1(&n))
+//                     .or(ecm(&n))                 // medium-size factors
+//                     .or(quadratic_sieve(&n));    // heavy artillery
+//         while n % &factor == 0 {
+//             *factors.entry(factor.clone()).or_insert(0) += 1;
+//             n /= &factor;
+//         }
+//     }
+//     factors
+// }
+
+
+// Timing on consumer hardware (very rough):
+//
+//   20-digit number          milliseconds
+//   40-digit number          seconds
+//   60-digit number          minutes to hours
+//   100-digit number         days to weeks (distributed)
+//   200-digit number         years on a research cluster
+//   600+ digits (RSA-2048)   longer than the universe has existed
+//
+// The exponential-vs-polynomial gap between primality testing (page 5)
+// and factoring is the entire foundation of RSA, TLS, code-signing,
+// and most of the public-key cryptography on the internet.`,
         lang: 'rust'
       }
     ],
