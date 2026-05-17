@@ -2194,6 +2194,79 @@ fn pagerank(links: &DMatrix<f64>, damping: f64, iterations: usize) -> DVector<f6
     r
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `\`for _ in 0..iterations\` is the **counted-loop idiom** — "run this body \`iterations\` times, no step counter needed."  The range \`0..iterations\` (page 15) is an iterator yielding \`0, 1, 2, …, iterations - 1\`, and the loop binds each yielded value to the pattern on the left.  Here the pattern is just \`_\`, the wildcard from page 9 that matches anything and binds nothing.  Same range, two patterns: \`for i in 0..n\` when you actually need the step number, \`for _ in 0..n\` to make it clear you do not.  The underscore is documentation for the reader as much as it is syntax for the compiler.`,
+        code: `// Counted loop — run the body N times, discard the index:
+for _ in 0..5 {
+    println!("again");
+}
+// prints "again" five times.
+
+// If you need the step number, bind it:
+for i in 0..5 {
+    println!("step {}", i);     // step 0, step 1, ..., step 4
+}
+
+// On page 22, only the repetition matters — not the iteration index.
+// The _ tells the reader "I'm not using the loop variable on purpose":
+for _ in 0..iterations {
+    r = links * (&r * damping) + &teleport;
+}
+
+// More verbose equivalents — both work, neither idiomatic:
+let mut k = 0;
+while k < iterations {
+    r = links * (&r * damping) + &teleport;
+    k += 1;
+}
+
+// For Rust, for/in is the idiomatic counted loop.  Reach for while only
+// when the stop condition is not a simple count.`,
+        lang: 'rust'
+      },
+      {
+        prose: `Two floating-point expressions set up PageRank's bookkeeping.  \`1.0 / n as f64\` is the **initial rank** every page starts with — the total rank mass is \`1.0\` and it is split evenly across all \`n\` pages, so each page starts with \`1/n\`.  \`(1.0 - damping) / n as f64\` is the **teleport mass** — at each iteration, with probability \`1 - damping\` (typically \`0.15\` when damping is \`0.85\`), the model says a random surfer teleports to a uniformly random page, contributing \`(1 - damping) / n\` to every page's rank.  In both expressions, \`as f64\` converts the \`usize\` count \`n\` to a 64-bit float for the division — Rust never implicitly converts between integer and float types (the same rule from page 15 applied across number kinds, not just across integer widths).  Operator precedence: \`as\` binds tighter than \`/\`, so the parser sees \`1.0 / (n as f64)\` and \`(1.0 - damping) / (n as f64)\`.`,
+        code: `// n is a usize — Rust will not implicitly convert it to f64.
+let n: usize = links.ncols();
+
+
+// ── Initial rank — split 1.0 of mass evenly across n pages ─────
+//
+//   1.0 / n as f64  =  1.0 / (n as f64)
+//
+//   for n =     10 pages →  0.1     per page
+//   for n =    100 pages →  0.01    per page
+//   for n =  1,000,000   →  0.000001 per page
+//
+let mut r = DVector::from_element(n, 1.0 / n as f64);
+
+
+// ── Teleport mass per page ────────────────────────────────────
+//
+//   (1.0 - damping) / n as f64  =  (1.0 - damping) / (n as f64)
+//
+//   damping = 0.85,  n = 100  →  teleport = 0.15 / 100 = 0.0015 per page
+//
+let teleport = DVector::from_element(n, (1.0 - damping) / n as f64);
+
+
+// Operator precedence — \`as\` binds tighter than \`/\`:
+//
+//   1.0 / n as f64                 parses as   1.0 / (n as f64)
+//   (1.0 - damping) / n as f64     parses as   (1.0 - damping) / (n as f64)
+
+
+// One iteration of the PageRank update:
+//
+//   r_new  =  links · (r · damping)  +  teleport
+//             ────────────────────       ────────
+//             redistribute damping       add a flat teleport
+//             fraction of rank along     contribution to every
+//             outbound links             page
+//
+// Repeat until r stops changing (or for a fixed iteration budget).`,
+        lang: 'rust'
       }
     ],
     tldr: 'PageRank, recommendation systems, search ranking, image compression — all secretly matrix problems.  All solvable with off-the-shelf libraries.',
@@ -2234,6 +2307,135 @@ fn satisfy(clauses: Vec<Vec<i32>>) -> Option<Vec<i32>> {
     }
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `SAT's input is a logical formula written in **Conjunctive Normal Form (CNF)** — a giant AND of ORs.  The \`Vec<Vec<i32>>\` shape is the **DIMACS** convention, the standard format SAT solvers everywhere accept.  Each variable is encoded as a positive integer (\`1\`, \`2\`, \`3\`, …).  A positive integer means "this variable is true" and its negative means "this variable is false."  A **literal** is a variable or its negation — a positive or negative integer in the encoding.  Each inner \`Vec<i32>\` is a **clause**: a list of literals joined by OR.  The outer \`Vec\` is the **formula**: all those clauses joined by AND.  A formula is *satisfiable* if there is some assignment of true / false to each variable that makes every clause come out true.`,
+        code: `// DIMACS-style encoding — the standard SAT solver input format:
+//
+//    1  →  variable x₁ is TRUE
+//   -1  →  variable x₁ is FALSE
+//    2  →  variable x₂ is TRUE
+//   -2  →  variable x₂ is FALSE
+//   ...
+//
+// Each inner Vec is a clause — an OR of literals.
+// The outer Vec is the formula — an AND of clauses.
+
+let formula: Vec<Vec<i32>> = vec![
+    vec![ 1, -2],       // (x₁  ∨  ¬x₂)
+    vec![-1,  3],       // (¬x₁ ∨  x₃)
+    vec![ 2,  3],       // (x₂  ∨  x₃)
+];
+
+// The whole formula, expanded:
+//
+//   (x₁ ∨ ¬x₂)  ∧  (¬x₁ ∨ x₃)  ∧  (x₂ ∨ x₃)
+//
+// "Find a TRUE/FALSE choice for each variable such that
+//  every clause has at least one literal that came out true."`,
+        lang: 'rust'
+      },
+      {
+        prose: `The solver returns \`Option<Vec<i32>>\`.  \`Some(assignment)\` means a satisfying assignment exists; \`None\` means no assignment can make the formula true.  The returned vector uses the same DIMACS convention: each entry is a literal, positive for "this variable came out true," negative for "this variable came out false."  For a formula over \`n\` variables, the vector has \`n\` entries — one per variable, in order.  Underneath, \`splr\` returns a richer \`Certificate\` enum (\`SAT(Vec<i32>)\` or \`UNSAT\`); the wrapper collapses both to \`Option\` because most callers do not need the richer distinction.`,
+        code: `// One satisfying assignment for the formula above:
+let solution: Vec<i32> = vec![1, -2, 3];
+//                            ─  ──  ─
+//                            │  │   └── x₃ is true
+//                            │  └────── x₂ is false
+//                            └───────── x₁ is true
+
+// Verify it by hand:
+//   (x₁ ∨ ¬x₂)  =  (true  ∨ true)  =  true   ✓
+//   (¬x₁ ∨ x₃)  =  (false ∨ true)  =  true   ✓
+//   (x₂ ∨ x₃)   =  (false ∨ true)  =  true   ✓
+//
+// Every clause has at least one literal that came out true → formula satisfied.
+
+
+// A formula can be UNSAT — no assignment works:
+let contradiction: Vec<Vec<i32>> = vec![
+    vec![ 1],          // (x₁)       →  forces x₁ = true
+    vec![-1],          // (¬x₁)      →  forces x₁ = false
+];
+// satisfy(contradiction)  →  None    (Certificate::UNSAT inside the solver)
+
+
+// What the solver actually does:
+//
+// Brute force would try all 2ⁿ assignments — infeasible past about 30
+// variables.  Modern CDCL solvers (Conflict-Driven Clause Learning)
+// search far smarter: they pick a variable, assume true, propagate
+// implications, learn from dead-ends, and prune the search aggressively.
+// Real-world configuration and verification instances with millions of
+// variables routinely solve in seconds.`,
+        lang: 'rust'
+      },
+      {
+        prose: `The page-23 code is abstract — \`Vec<Vec<i32>>\` of integer literals.  Where do business problems with that shape actually come from?  The most common case is **configuration validation**.  Imagine a product with five toggleable features: \`SSO\`, \`user_sync\`, \`audit\`, \`Pro\`, \`Enterprise\`.  Map each to a positive integer — 1 = SSO, 2 = user_sync, 3 = audit, 4 = Pro, 5 = Enterprise — and the product's business rules become clauses.  "If SSO is on, then user_sync must be on" is the implication \`SSO → user_sync\`, which in CNF becomes \`¬SSO ∨ user_sync\` — the clause \`[-1, 2]\`.  "Pro and Enterprise are mutually exclusive" becomes \`¬Pro ∨ ¬Enterprise\` — clause \`[-4, -5]\`.  "Audit requires Pro or Enterprise" becomes \`¬audit ∨ Pro ∨ Enterprise\` — clause \`[-3, 4, 5]\`.  Three English rules, three clauses.  Ask the solver to satisfy them and you get one valid configuration back.  Add the customer's requested settings as **unit clauses** ("they want audit on" → \`[3]\`) and the solver searches for a configuration that satisfies both the rules and the request, or returns \`UNSAT\` when the request is impossible.  Other problems that fit the same shape: shift scheduling (each shift has a list of people who could cover it), package dependency resolution (each package needs one of several compatible versions of a dependency), software verification (each branch decision is a variable, the bug condition is a target), and puzzles like Sudoku.`,
+        code: `// Five product features → five Boolean variables, numbered 1-5:
+//
+//   1  →  SSO
+//   2  →  user_sync
+//   3  →  audit
+//   4  →  Pro
+//   5  →  Enterprise
+
+let rules: Vec<Vec<i32>> = vec![
+    vec![-1,  2     ],     // ¬SSO  ∨  user_sync
+    vec![-4, -5     ],     // ¬Pro  ∨  ¬Enterprise
+    vec![-3,  4,  5 ],     // ¬audit ∨ Pro ∨ Enterprise
+];
+//
+//   English rule                       CNF clause
+//   ──────────────────────────────     ──────────────
+//   SSO → user_sync                    ¬SSO ∨ user_sync         [-1, 2]
+//   NOT both Pro and Enterprise        ¬Pro ∨ ¬Enterprise       [-4, -5]
+//   audit → Pro ∨ Enterprise           ¬audit ∨ Pro ∨ Enterprise [-3, 4, 5]
+
+
+// Ask the solver: is any configuration valid?
+let answer = satisfy(rules.clone());
+// → Some([..])      A valid assignment.  Many configurations satisfy
+//                    these rules — including "every feature off."
+
+
+// Add the customer's request as unit clauses (one literal each):
+let mut with_request = rules.clone();
+with_request.push(vec![3]);     // "we want audit on"
+
+let answer = satisfy(with_request);
+// → Some([-1, -2, 3, 4, -5])
+//        SSO off, user_sync off, audit on, Pro on, Enterprise off.
+//        The audit request forced clause 3 to pick Pro or Enterprise;
+//        clause 2 says they can't both be on; the solver picked Pro.
+
+
+// Try a request that violates the rules:
+let mut impossible = rules.clone();
+impossible.push(vec![4]);       // want Pro
+impossible.push(vec![5]);       // AND want Enterprise
+
+let answer = satisfy(impossible);
+// → None      Certificate::UNSAT — clause 2 says Pro and Enterprise are
+//                                  mutually exclusive, so this is impossible.
+
+
+// The English → CNF translation table:
+//
+//   English                          Logic                       CNF
+//   ─────────────────────────        ──────────────              ──────────
+//   "if A then B"                    ¬A ∨ B                      [-A, B]
+//   "A is required"                  A                           [A]
+//   "not A"                          ¬A                          [-A]
+//   "A or B"                         A ∨ B                       [A, B]
+//   "not both A and B"               ¬A ∨ ¬B                     [-A, -B]
+//   "A and B both required"          A ∧ B                       [A], [B]
+//   "exactly one of A, B"            (A ∨ B) ∧ ¬(A ∧ B)          [A, B], [-A, -B]
+//
+// Once a business rule has been written down in plain English, the
+// translation to clauses is mechanical.  The hard part is *spotting*
+// that a problem has this shape — page 38 catalogs the lookalikes.`,
+        lang: 'rust'
       }
     ],
     tldr: 'SAT is the canonical hard problem.  But modern industrial solvers crack million-variable instances in seconds.  Use one; do not write one.',
@@ -2269,6 +2471,115 @@ fn three_sat(clauses: Vec<[i32; 3]>) -> Option<Vec<i32>> {
         Certificate::UNSAT => None,
     }
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`Vec<[i32; 3]>\` is a \`Vec\` whose elements are **fixed-size arrays** of exactly three \`i32\` values.  Arrays in Rust are written \`[T; N]\` where \`N\` is the length, known at compile time.  Unlike \`Vec<T>\` (heap-allocated, growable, runtime-sized), an array \`[T; N]\` is stored inline at its natural size and cannot grow or shrink.  Why use it here?  3-SAT requires every clause to have exactly three literals; the type \`Vec<[i32; 3]>\` enforces that at compile time — you cannot accidentally hand the function a 4-literal clause.  Compare with page 23's input, \`Vec<Vec<i32>>\` — clauses of variable length, the general CNF shape.  Choosing the type with the right level of strictness is part of how Rust APIs encode their assumptions.`,
+        code: `// Three ways to hold "three integers":
+let v: Vec<i32>    = vec![1, -2, 3];    // heap-allocated, growable, runtime length
+let a: [i32; 3]    = [1, -2, 3];         // inline storage, fixed length at compile time
+let s: &[i32]      = &[1, -2, 3];        // borrowed view, runtime length
+
+// Collections of those:
+let any_length: Vec<Vec<i32>>  = vec![vec![1, -2], vec![3], vec![-4, 5, -6]];
+//              ↑
+//              inner Vec — clauses can be any length
+
+let exactly_3:  Vec<[i32; 3]>  = vec![[1, -2, 3], [-1, 2, -3]];
+//              ↑
+//              inner [_; 3] — every clause is exactly three literals
+
+// The 3-SAT signature refuses a wrong-size literal at compile time:
+let bad: Vec<[i32; 3]> = vec![[1, -2]];  // error: expected 3 elements, found 2
+
+// Why fixed-size arrays exist:
+//   • compile-time size known       →   stack/inline storage, no heap
+//   • exact-shape constraints       →   the type itself documents the rule
+//   • bit/byte buffers              →   [u8; 16], [u8; 32] for fixed-size hashes
+//   • pixel formats                 →   [f32; 4] for RGBA, [f32; 3] for RGB
+//   • SIMD lanes                    →   [f32; 8] for AVX, [f32; 4] for SSE
+
+// Array methods overlap with slice methods because [T; N] derefs to &[T]:
+let arr: [i32; 5] = [1, 2, 3, 4, 5];
+arr.iter().sum::<i32>();      // 15
+arr.len();                     // 5 — known at compile time, but still a method`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`Solver::try_from\` invokes a **\`TryFrom\` implementation** — Rust's standard pattern for *fallible* conversions between types.  Two related traits live next to each other in the standard library.  \`From<T>\` is for conversions that always succeed: \`String::from("hello")\`, \`i64::from(42_i32)\`.  Calling \`From::from(x)\` returns the converted value directly.  \`TryFrom<T>\` is for conversions that might fail: converting an \`i64\` to \`i32\` could overflow, converting raw bytes to UTF-8 might find invalid sequences, building a SAT solver from a tuple of config-and-CNF could find malformed clauses.  Calling \`TryFrom::try_from(x)\` returns \`Result<Self, Self::Error>\`.  \`splr\` implements \`TryFrom\` for \`Solver\` so callers can build a solver from a config-and-formula tuple and get a \`Result\` back if anything is wrong.  Every library that provides controllable conversions is expected to implement these traits.`,
+        code: `// From and TryFrom — the two halves of Rust's standard conversion pattern.
+
+// From<T>: infallible — always succeeds.
+let s: String = String::from("hello");        // &str → String, always works
+let n: i64    = i64::from(42_i32);             // i32 → i64, always works
+
+// TryFrom<T>: fallible — returns Result<Self, Self::Error>.
+let n: Result<i32, _> = i32::try_from(42_i64);                 // Ok, fits
+let n: Result<i32, _> = i32::try_from(10_000_000_000_i64);     // Err, overflow
+
+let s: Result<&str, _> = std::str::from_utf8(&[0xff]);         // Err, invalid UTF-8
+
+// Page 24's case — building a Solver from (config, cnf) might fail
+// if the CNF is malformed:
+let solver: Result<Solver, _> =
+    Solver::try_from((SolverConfig::default(), cnf.as_ref()));
+
+// Companion traits — Into / TryInto.  Every From<T> for U gets a free
+// Into<U> for T (and the same for TryFrom/TryInto).  Use whichever reads better:
+let s: String = "hello".into();                 // via Into (the inverse of From)
+let n: i32    = 42_i64.try_into()?;             // via TryInto (the inverse of TryFrom)
+
+// Cheat sheet:
+//   From      / Into       →  always succeed
+//   TryFrom   / TryInto    →  return Result on failure`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`.ok()\` is a method on \`Result<T, E>\` that **discards the error and returns an \`Option<T>\`** — \`Ok(t).ok() == Some(t)\` and \`Err(e).ok() == None\`.  The error information is lost (only the absence is preserved), so use \`.ok()\` when the caller does not care *why* something failed.  On page 24 \`.ok()\` shows up twice followed immediately by \`?\` — \`.ok()?\` is the canonical bridge between Result and Option.  The reason: the function returns \`Option<Vec<i32>>\`, and the \`?\` operator can only short-circuit on the *enclosing function's* return type.  Writing \`?\` directly on a Result inside an Option-returning function would not compile.  Converting Result → Option with \`.ok()\` first, then applying \`?\`, lets the function return \`None\` on any failure.  The companion method \`.err()\` returns \`Option<E>\` — useful when you only want to inspect the failure case.`,
+        code: `// .ok() — discard the error, return Option<T>.
+let success: Result<i32, &str> = Ok(42);
+let failure: Result<i32, &str> = Err("nope");
+
+success.ok();         // Some(42)
+failure.ok();         // None — the "nope" is gone
+
+// The companion .err() flips the perspective:
+success.err();        // None
+failure.err();        // Some("nope")
+
+
+// Why .ok()? appears on page 24:
+//
+// The function returns Option<Vec<i32>>.  ? only short-circuits on the
+// enclosing function's return type:
+//
+//   in a Result-returning fn   →   ? bubbles Err
+//   in an Option-returning fn  →   ? bubbles None
+//
+// .ok() converts Result<T, E> → Option<T> so ? can short-circuit cleanly:
+
+fn three_sat(clauses: Vec<[i32; 3]>) -> Option<Vec<i32>> {
+    let cnf: Vec<Vec<i32>> = clauses.into_iter().map(|c| c.to_vec()).collect();
+    let mut s = Solver::try_from((SolverConfig::default(), cnf.as_ref())).ok()?;
+    //                                                                    ────
+    //                                                          Result<Solver, _>
+    //                                                        → Option<Solver>
+    //                                                        → unwrap, or return None
+    match s.solve().ok()? {
+        Certificate::SAT(a) => Some(a),
+        Certificate::UNSAT => None,
+    }
+}
+
+// When to keep the Result vs throw away the error:
+//
+//   .ok()              caller does not care WHY it failed.  Quick to write.
+//   keep the Result    caller needs the error info.  Use .map_err() (page 16)
+//                       or propagate with ? in a Result-returning function.
+//
+// In a library, prefer keeping the error (with thiserror, page 13).
+// .ok() is appropriate when the caller has decided that any failure
+// means the same thing — here, "this 3-SAT problem is unsolvable, somehow."`,
         lang: 'rust'
       }
     ],
@@ -2318,6 +2629,110 @@ Three variables is the cliff.  Watch for it in requirements.`
     (1..n).map(|i| dp[full][i].saturating_add(dist[i][0])).min().unwrap()
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `\`vec![vec![u32::MAX; n]; 1 << n]\` allocates a **two-dimensional table** in one line.  The \`vec!\` macro has two forms: \`vec![1, 2, 3]\` is the literal version (explicit list of elements), and \`vec![value; count]\` is the **repeat** form — produces a \`Vec\` of \`count\` copies of \`value\`.  Nesting the repeat form gives a rectangular table: the inner \`vec![u32::MAX; n]\` is a row of \`n\` "infinity" entries; the outer \`vec![row; 1 << n]\` makes \`1 << n\` copies of that row, one per possible subset of cities.  \`u32::MAX\` is the largest \`u32\` value (about 4.3 billion) and serves as the **"unreached / infinity" sentinel** — any real distance will be smaller, so reading \`MAX\` from the table reliably means "no path lands in this state yet."  \`1 << n\` is the bit-shift expression for **2 to the power n** — for the Held-Karp DP it is the count of all possible subsets of \`n\` cities.`,
+        code: `// vec! macro — two forms:
+let xs = vec![1, 2, 3];               // literal: explicit elements
+let ys = vec![0u32; 5];               // repeat:  five copies of 0u32
+//      ──────────  ─
+//                  ↑    ↑
+//                value  count
+
+// Nesting the repeat form makes a rectangular table:
+let dp: Vec<Vec<u32>> = vec![vec![u32::MAX; n]; 1 << n];
+//                           ──────────────  ────────
+//                           inner row:       outer:
+//                           n × u32::MAX     (1 << n) copies of the row
+//
+// Shape: (1 << n) rows  ×  n columns,  every entry u32::MAX.
+
+
+// u32::MAX as the sentinel "unreached / infinity":
+//
+//   u32::MAX  =  4_294_967_295        the largest u32 value
+//
+// Any real distance fits inside u32, so MAX safely means "no path yet."
+// .saturating_add() (used elsewhere in the function) keeps the sum
+// pinned at MAX instead of wrapping around.
+
+
+// 1 << n is left bit-shift — equivalent to 2.pow(n):
+//
+//   1 << 0  =  1                       0b00000001  =  2⁰
+//   1 << 1  =  2                       0b00000010  =  2¹
+//   1 << 2  =  4                       0b00000100  =  2²
+//   1 << 3  =  8                       0b00001000  =  2³
+//   1 << 4  = 16                       0b00010000  =  2⁴
+//   1 << n  = 2ⁿ
+//
+// Why 2ⁿ?  Each of n cities is either visited or not — exactly 2ⁿ
+// possible subsets.  The DP indexes one row per subset.
+
+
+// Memory footprint blows up:
+//   n = 10  →    1 024 × 10 × 4 bytes  =    40 KB
+//   n = 15  →   32 768 × 15 × 4 bytes  =   1.9 MB
+//   n = 20  →    1 M  × 20 × 4 bytes   =    80 MB
+//   n = 25  →    32 M × 25 × 4 bytes   =   3.2 GB
+//
+// The exponential explosion is why Held-Karp tops out around n = 20.
+// Past that, even storing the table runs out of memory.`,
+        lang: 'rust'
+      },
+      {
+        prose: `The \`mask\` variable is a single \`u32\` whose **bits encode a subset of cities**.  Bit \`i\` is set if city \`i\` has been visited.  This is the standard trick for representing subsets when there are at most about 64 elements — one machine word holds the whole subset, and bitwise operations let you test, add, and remove elements in a single CPU instruction.  Four operations carry the entire encoding.  \`1 << k\` is a mask with only bit \`k\` set.  \`mask | (1 << k)\` adds city \`k\` to the subset.  \`(mask >> k) & 1\` reads the value of bit \`k\` — right-shift slides bit \`k\` down to position 0, then \`& 1\` masks every other position away, leaving \`0\` or \`1\`.  \`(1 << n) - 1\` is the **"all cities" mask**: bit \`n\` set, then minus one, gives bits \`0..n-1\` all set.  Subsets-as-bitmasks is the canonical encoding in performance-sensitive code whenever the universe is small (≤ 64 elements).  Past that, switch to \`BTreeSet\` or \`HashSet\`.`,
+        code: `// Encoding a subset as bits in a u32.  Bit i = "city i has been visited."
+//
+//   Cities {0, 2, 3}     →    00001101    (bits 0, 2, 3 set)
+//                              = 13 in decimal
+
+
+// Read bit k:  (mask >> k) & 1
+let mask: u32 = 0b00001101;            // {0, 2, 3}
+(mask >> 0) & 1;                        // 1   ← city 0 IS in the subset
+(mask >> 1) & 1;                        // 0   ← city 1 is NOT
+(mask >> 2) & 1;                        // 1   ← city 2 IS in
+(mask >> 3) & 1;                        // 1   ← city 3 IS in
+//
+// Visual for (mask >> 2) & 1:
+//
+//   mask           00001101
+//   >> 2           00000011    shift right by 2 — bit we want is now at position 0
+//   & 1            00000001    mask everything else away
+//   result         1
+
+
+// Set bit k:  mask | (1 << k)
+let mask: u32 = 0b00001101;            // {0, 2, 3}
+let with_5    = mask | (1 << 5);        // {0, 2, 3, 5}
+//
+//   mask           00001101
+//   1 << 5         00100000    a mask with only bit 5 set
+//   | (or)         00101101    bit 5 added; everything else unchanged
+
+
+// Clear bit k:  mask & !(1 << k)       (not used on page 25 — still worth knowing)
+let mask: u32 = 0b00001101;            // {0, 2, 3}
+let without_2 = mask & !(1 << 2);       // {0, 3}
+
+
+// The "all of them" mask:  (1 << n) - 1
+//
+//   1 << 4           00010000     bit 4 set
+//   (1 << 4) - 1     00001111     bits 0, 1, 2, 3 all set  →  full subset {0,1,2,3}
+
+
+// Page 25 uses these four operations in the inner DP loop:
+//
+//   (mask >> last) & 1 == 0       "if last is NOT in mask, skip this state"
+//   (mask >> next) & 1 == 1       "if next IS in mask, skip — can't revisit"
+//   mask | (1 << next)            "extended subset including next"
+//   (1 << n) - 1                  "full subset — all n cities visited"
+//
+// Reach for bitmasks whenever the universe has at most about 64 elements.
+// Past that (a single u64 can't hold the subset), use BTreeSet or HashSet.`,
+        lang: 'rust'
       }
     ],
     tldr: 'Visit every location once and return — the famous hard problem.  Exact answers for small N, approximations for medium, SaaS for production.',
@@ -2358,6 +2773,61 @@ The problem is hard.  The tools are good.  Use the tools.`
     }
     dp[cap]
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`&[u32]\` is a **slice of u32 values, taken by reference**.  Two layers: \`[u32]\` is the slice type (an unsized, runtime-length sequence of \`u32\`), and the outer \`&\` borrows it.  At runtime the compiler stores this as a **fat pointer** — a (data pointer, length) pair — so the function knows where the data lives and how many entries are valid.  \`&[T]\` is the maximally permissive read-only parameter type for any contiguous sequence: a \`Vec<u32>\` coerces via \`&vec\`, an array \`[u32; N]\` coerces via \`&arr\`, and a literal \`&[1, 2, 3]\` is one directly.  Same rule as page 14 applied to numeric sequences — prefer \`&[T]\` over \`Vec<T>\` for read-only parameters.  It borrows instead of demanding ownership, and it accepts every shape callers might already have.`,
+        code: `// &[u32] decoded:
+//
+//   & [ u32 ]
+//   ─ ─────
+//   │  │
+//   │  └── [u32] — an unsized sequence of u32 values
+//   └──── & — a shared borrow of that sequence
+
+fn knapsack(weights: &[u32], values: &[u32], capacity: u32) -> u32 { /* ... */ }
+
+
+// Every call below works because the source coerces to &[u32]:
+knapsack(&[2, 3, 4], &[3, 4, 5], 8);                 // array literal
+
+let v: Vec<u32> = vec![2, 3, 4];
+let w: Vec<u32> = vec![3, 4, 5];
+knapsack(&v, &w, 8);                                  // Vec<u32> → &[u32]
+knapsack(v.as_slice(), w.as_slice(), 8);              // explicit .as_slice()
+knapsack(&v[1..], &w[1..], 8);                        // sub-slice of a slice
+
+let arr: [u32; 3] = [2, 3, 4];
+knapsack(&arr, &[3, 4, 5], 8);                        // fixed-size array → &[u32]
+
+
+// Fat pointer — what's actually stored at runtime:
+//
+//   &[u32]
+//   ┌──────────────┬────────┐
+//   │ data pointer │ length │     16 bytes on a 64-bit target
+//   └──────────────┴────────┘
+//
+// The pointer says where the bytes live; the length tells the compiler
+// how many u32 values are valid.  Indexing is bounds-checked against
+// that length — no buffer overruns.
+
+
+// Why prefer &[T] over Vec<T> for read-only parameters:
+//   • borrows instead of demanding ownership
+//   • accepts Vec, arrays, sub-slices, literals — every shape
+//   • the signature declares "I will only read, not grow or shrink"
+//
+// Reach for Vec<T> as a parameter only when the function genuinely needs
+// to take ownership (e.g., to store or move it elsewhere).  Reach for
+// &mut [T] when it needs to mutate elements in place but not change length.
+
+
+// The slice family across this book:
+//   &[u32]      weights / values list — read-only sequence of numbers
+//   &str        a string slice (page 4) — the same idea applied to bytes
+//   &[&str]     a list of string references (page 17)
+//   &mut [T]    a writable slice — used for in-place sorting and shuffling`,
         lang: 'rust'
       }
     ],
@@ -2401,6 +2871,145 @@ fn min_vertex_cover(n: usize, edges: &[(usize, usize)]) -> Vec<usize> {
     let sol = model.solve().expect("ILP solved");
     (0..n).filter(|&i| sol.value(x[i]) > 0.5).collect()
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`variable()\` returns a **builder** — a fresh variable specification with no constraints attached yet.  Builder methods like \`.binary()\`, \`.integer()\`, \`.min(x)\`, \`.max(x)\` chain on to refine the spec; each method returns the builder back so the chain can continue.  When the spec is ready, hand it to \`vars.add(...)\` and you get a real variable handle.  This **fluent builder pattern** is a standard Rust idiom for configuring complex objects without dozens of constructor arguments — you set only what you need, defaults handle the rest, and each call documents itself at the call site.  \`.binary()\` constrains the variable to take only \`0\` or \`1\` — exactly what vertex cover needs ("vertex \`i\` is in the cover or not").`,
+        code: `// variable() — fresh variable spec, no constraints yet.
+let v = variable();
+
+// Chain builder methods to refine.  Each method returns the builder
+// back so you can keep chaining:
+let v = variable().binary();                       // {0, 1}
+let v = variable().integer().min(0).max(100);      // integer in [0, 100]
+let v = variable().min(0.0);                        // continuous, ≥ 0
+let v = variable().bounds(-10.0..=10.0);            // continuous, [-10, 10]
+let v = variable().name("bread");                   // optional name for debugging
+
+// Hand the spec to .add() on the variables container to get a real handle:
+let mut vars = ProblemVariables::new();
+let bread:    Variable = vars.add(variable().min(0.0).name("bread"));
+let in_cover: Variable = vars.add(variable().binary());
+
+// Why this pattern instead of constructor arguments:
+//   • You set only what you need — defaults handle the rest.
+//   • Each method documents itself at the call site.
+//   • The library can grow the spec language without breaking constructors.
+//
+// Other Rust libraries that use the same pattern:
+//   clap         command-line argument parsers
+//   reqwest      HTTP clients
+//   tokio        runtime configuration
+//   nalgebra     statically-sized matrix builders`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`x.iter().sum::<good_lp::Expression>()\` adds up every variable in \`x\` into a single \`Expression\`.  Two things make this work.  First, \`good_lp\` overloads the \`+\` operator on \`Variable\` to produce an \`Expression\` — adding two variables does not compute a number (the variables have no values yet), it builds a *symbolic* sum.  Second, \`Iterator::sum\` needs to know what type to accumulate into.  With \`Vec<i32>\` the answer is obviously \`i32\`; with \`Vec<Variable>\` the result type is \`Expression\` (not \`Variable\`), and the compiler cannot guess that.  The turbofish \`::<good_lp::Expression>\` from page 11 tells \`sum\` exactly which target type to use.  Annotating the binding instead of using a turbofish would work equally well.`,
+        code: `// good_lp overloads + on Variable to produce a symbolic Expression:
+//
+//   Variable + Variable     →  Expression
+//   Variable + Expression   →  Expression
+//   2 * Variable            →  Expression
+//   Expression + Expression →  Expression
+//
+// No arithmetic is performed — the variables don't have values yet.
+// The result is a tree representing the algebraic sum.
+
+let x: Vec<Variable> = /* ... */;
+
+// Build the objective: minimise sum of x_i (the cover size).
+let sum: good_lp::Expression = x.iter().sum::<good_lp::Expression>();
+//                                       ─────────────────────────
+//                                       turbofish: tell sum() the target type
+
+// Same thing with type annotation instead of turbofish:
+let sum: good_lp::Expression = x.iter().sum();
+
+// Hand the expression to .minimise():
+let model = vars.minimise(sum).using(default_solver);
+
+// Why the type hint is needed:
+//   Iterator::sum<S> requires <S: Sum<Item>>.
+//   For an iter of Variable, the impl Sum<&Variable> for Expression exists,
+//   but the compiler doesn't pick a target type on its own — there could
+//   in principle be other impls.  Turbofish or annotation disambiguates.
+//
+// Same shape applies to .collect() (page 14) and .parse() (page 11) —
+// any iterator/conversion that can produce more than one type.`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`constraint!\` is a macro (the \`!\` is the giveaway from page 19) that parses a Rust-like inequality and produces a \`Constraint\` object the solver can add to the model.  The whole expression — \`x[u] + x[v] >= 1\` — is parsed by the macro as one piece, not as separate \`+\` and \`>=\` operations.  This is the macro's job: regular function arguments cannot contain a \`>=\` in the middle.  The body of the loop adds one constraint per edge of the input graph.  In vertex cover, **an edge is "covered" if at least one of its endpoints is in the cover**, so the constraint \`x[u] + x[v] >= 1\` translates directly: with binary variables, the sum is \`0\`, \`1\`, or \`2\`, and requiring it to be \`>= 1\` is the same as saying "at least one endpoint is chosen."  Combined with the minimise-the-sum objective, the solver hunts for the smallest set of vertices that covers every edge — exactly the minimum vertex cover.`,
+        code: `// constraint! is a macro — the trailing ! is the marker (page 19).
+// It parses an inequality expression in one piece.
+
+for &(u, v) in edges {
+    model = model.with(constraint!(x[u] + x[v] >= 1));
+}
+//
+//              ┌──── u and v are graph indices (the edge's endpoints)
+//              ▼
+//   constraint!( x[u] + x[v] >= 1 )
+
+// What it means for vertex cover, enumerated:
+//
+//   x[u] = 0,  x[v] = 0    →  sum = 0    fails  ✗   edge not covered
+//   x[u] = 1,  x[v] = 0    →  sum = 1    passes ✓   u in the cover
+//   x[u] = 0,  x[v] = 1    →  sum = 1    passes ✓   v in the cover
+//   x[u] = 1,  x[v] = 1    →  sum = 2    passes ✓   both endpoints
+//
+// "At least one endpoint must be in the cover."  Combined with the
+// minimise-sum objective, the solver returns the smallest set of
+// vertices that covers every edge.
+
+// One edge → one constraint.  A graph with 1000 edges → 1000 constraints.
+// Modern MIP solvers (HiGHS) handle thousands of constraints in seconds.
+
+// The same shape encodes many other "at least / at most / exactly k of these":
+constraint!(x[a] + x[b] + x[c] >= 2);    // at least 2 of {a, b, c} chosen
+constraint!(x[a] + x[b] + x[c] <= 1);    // at most 1 of them chosen
+constraint!(x[a] + x[b] + x[c] == 1);    // exactly 1 of them chosen`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`sol.value(x[i])\` reads the solver's final value for variable \`x[i]\`.  Even though \`x[i]\` was declared \`.binary()\`, the solver returns the result as an \`f64\` — a 64-bit floating-point number — because the underlying linear-programming and branch-and-bound algorithms operate in continuous arithmetic and only commit to integer values at branch decisions.  The returned value should be essentially \`0.0\` or \`1.0\`, but **floating-point precision** means the literal value might be \`0.99999999998\` or \`0.00000000002\`.  Comparing against \`0.5\` is the safe, idiomatic way to read "which side did the variable land on" — anything above \`0.5\` is the \`1\` case, anything below is the \`0\` case.  This pattern is standard with every numerical optimization solver — exact float equality (\`== 1.0\`) is fragile and skips legitimate values like \`0.999999999998\`.`,
+        code: `// sol.value(x[i]) — read the solver's value for x[i] as an f64.
+//
+//   If x[i] was declared .binary(), the solver guarantees the value is
+//   "essentially" 0 or 1.  In practice it might be:
+//
+//     0.0000000000023      ← effectively 0
+//     0.9999999999987      ← effectively 1
+//
+//   Tiny deviations from exact 0/1 come from floating-point precision
+//   in the solver's internal arithmetic, not from a bug in the model.
+
+
+// The idiomatic comparison is against 0.5:
+let cover: Vec<usize> = (0..n)
+    .filter(|&i| sol.value(x[i]) > 0.5)
+    //                              ───
+    //                              "did this variable land on the 1 side?"
+    .collect();
+
+
+// Why 0.5 and not == 1.0?
+//
+//   value > 0.5      reads cleanly as "value is closer to 1 than to 0."
+//                    robust to ±1e-9 numerical drift.
+//
+//   value == 1.0     exact float comparison, fragile.
+//                    0.999999999998 == 1.0 is FALSE, so this would skip
+//                    legitimate cover members.
+
+
+// Same trick for integer variables — if x is supposed to be 7, the
+// idiomatic read is .round() or a tolerance check:
+let exact = sol.value(x).round() as i64;            // common pattern
+let close = (sol.value(x) - 7.0).abs() < 1e-6;       // tolerance check
+
+// Floating-point equality is almost always wrong for solver outputs.
+// Pick a tolerance and stick with it.`,
         lang: 'rust'
       }
     ],
@@ -2446,6 +3055,86 @@ fn two_colorable(g: &UnGraph<&str, ()>) -> bool {
 // adjacent vertices differ.  Linear in the encoding, exponential
 // in the search — but solvers handle real instances at scale.`,
         lang: 'rust'
+      },
+      {
+        prose: `\`if let\` is **pattern matching used as a conditional**.  Read the syntax as: "if the value on the right matches the pattern on the left, bind the names and run the \`if\` block; otherwise run the \`else\` block (which is optional)."  It is sugar for a \`match\` with one explicit arm and a wildcard fallthrough — same logic, less ceremony.  On this page, \`g.node_indices().next()\` returns \`Option<NodeIndex>\` — \`None\` if the graph has no nodes, \`Some(first)\` otherwise.  The \`if let Some(start) = …\` form unwraps the \`Some\` directly and binds \`start\` for the body of the \`if\`; the \`else\` branch handles the empty-graph case (returns \`true\` vacuously, since a graph with no nodes is trivially 2-colorable).  The same control flow with \`match\` would be three more lines and a leftover wildcard arm.`,
+        code: `// if let — pattern match as a conditional.
+//
+//   if let PATTERN = EXPRESSION {
+//       /* runs when PATTERN matches; bindings are in scope here */
+//   } else {
+//       /* runs otherwise (else is optional) */
+//   }
+
+// Equivalent match expression:
+//   match EXPRESSION {
+//       PATTERN => { /* matched branch */ },
+//       _       => { /* fallthrough */ },
+//   }
+
+
+// Common case: peel apart an Option.
+let maybe_name: Option<&str> = Some("Alice");
+
+if let Some(name) = maybe_name {
+    println!("hello, {}", name);
+} else {
+    println!("no name");
+}
+
+// Same logic with match — more lines, more brackets:
+match maybe_name {
+    Some(name) => println!("hello, {}", name),
+    None       => println!("no name"),
+}
+
+
+// Works for any pattern, not just Option/Result:
+enum Event { Click { x: i32, y: i32 }, Scroll(i32), Quit }
+
+let e = Event::Click { x: 10, y: 20 };
+
+if let Event::Click { x, y } = e {
+    println!("click at ({}, {})", x, y);
+}
+// (no else — the other variants are silently ignored.)
+
+
+// Companion forms in the same family:
+
+// let-else (Rust 1.65+) — eager unwrap with mandatory diverging branch.
+let Some(name) = maybe_name else {
+    return;   // or break, continue, panic, ...
+};
+println!("hello, {}", name);            // \`name\` is in scope from here
+
+// while let — loop variant.  Iterate as long as the pattern matches.
+let mut stack = vec![1, 2, 3];
+while let Some(top) = stack.pop() {
+    println!("{}", top);
+}
+// prints 3, 2, 1; stops automatically when pop() returns None.
+
+
+// Page 28's specific use — handle the empty-graph case:
+fn two_colorable(g: &UnGraph<&str, ()>) -> bool {
+    if let Some(start) = g.node_indices().next() {
+        is_bipartite_undirected(g, start)         // graph has nodes — check it
+    } else {
+        true                                       // empty graph — vacuously 2-colorable
+    }
+}
+
+// Without if-let, the same logic looks like this:
+fn two_colorable_match(g: &UnGraph<&str, ()>) -> bool {
+    match g.node_indices().next() {
+        Some(start) => is_bipartite_undirected(g, start),
+        None        => true,
+    }
+}
+// Same behavior — if-let is just the shorter, idiomatic spelling when
+// only one variant carries interesting work.`,
+        lang: 'rust'
       }
     ],
     tldr: 'Coloring with two categories (bipartite check) is fast.  Three or more categories is NP-complete.  Sometimes the right move is to redesign to need only two.',
@@ -2487,6 +3176,138 @@ fn hamilton_circuit_brute(n: usize, edges: &[(usize, usize)]) -> Option<Vec<usiz
         ok.then_some(tour)
     })
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`itertools\` is a third-party crate that extends the standard library's \`Iterator\` trait with combinators that did not make the cut for std.  \`.permutations(k)\` is one of them: given an iterator, it yields every length-\`k\` ordered arrangement of the iterator's elements.  \`(1..n).permutations(n - 1)\` means "every ordered arrangement of \`n - 1\` items drawn from the cities \`1, 2, …, n-1\`."  Since the source range has exactly \`n - 1\` elements and we ask for permutations of length \`n - 1\`, every element appears in every permutation — this is the full factorial enumeration.  \`n = 4\` gives \`3! = 6\` permutations; \`n = 10\` gives \`9! = 362,880\`; \`n = 13\` gives about 480 million.  The factorial growth is what makes brute-force Hamilton (and brute-force TSP from page 25) infeasible past about \`n = 12\`.`,
+        code: `// itertools — a third-party crate extending std's Iterator trait.
+//   Cargo.toml:  itertools = "0.12"
+//   At use site: use itertools::Itertools;
+
+use itertools::Itertools;
+
+// .permutations(k) — every ordered arrangement of length k from the iterator.
+let perms: Vec<Vec<i32>> = (1..=3).permutations(2).collect();
+//   = [[1, 2], [1, 3], [2, 1], [2, 3], [3, 1], [3, 2]]
+//     P(3, 2) = 3! / (3-2)! = 6 length-2 permutations of {1, 2, 3}.
+
+let all: Vec<Vec<i32>> = (1..=3).permutations(3).collect();
+//   = [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]
+//     3! = 6 full permutations.
+
+
+// Page 29's call:
+let perms = (1..n).permutations(n - 1);
+//
+//  The range (1..n) yields  1, 2, ..., n-1.
+//  permutations(n-1) yields every ordering of those n-1 cities.
+//  Total count: (n-1)! permutations.
+
+
+// Growth of (n-1)!:
+//
+//   n =  5   →   4!  =       24
+//   n =  8   →   7!  =     5 040
+//   n = 10   →   9!  =   362 880
+//   n = 12   →  11!  =  ~40 million
+//   n = 13   →  12!  =  ~480 million
+//   n = 15   →  14!  =  ~87 billion       → minutes-to-hours per call
+//   n = 20   →  19!  =  ~10¹⁷             → infeasible
+//
+// Factorial growth is why brute-force Hamilton tops out around n = 12.
+
+
+// Related itertools combinators worth knowing:
+//   .combinations(k)         every length-k SUBSET (order doesn't matter)
+//   .cartesian_product(b)    every pair (a, b) from two iterators
+//   .chunks(k)               consecutive groups of k (itertools' lazy variant)
+//   .unique()                deduplicate (preserves first-seen order)
+//   .sorted()                collect, sort, hand back as an iterator`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`Vec::extend\` appends every item produced by an iterator onto the vec, growing the vec in place.  Here \`tour\` starts as \`vec![0]\` (the Hamilton circuit always begins at city 0) and \`.extend(perm)\` tacks on each of the \`n - 1\` cities from the current permutation.  After the call, \`tour\` is \`[0, p₁, p₂, …, pₙ₋₁]\` — a full tour that starts at 0 and visits every other city exactly once.  \`extend\` is the standard way to "append many" to a collection; it works with any \`IntoIterator\` source (another \`Vec\`, an iterator, an array, a range).  Equivalent imperative version: \`for x in perm { tour.push(x); }\`.  \`extend\` is the one-line sugar for the same loop, and when the source reports an exact size hint it pre-grows the vec's capacity to avoid repeated reallocations.`,
+        code: `let mut tour = vec![0];                  // start at city 0
+tour.extend(perm);                        // append every city from perm
+//
+//   Before:  tour = [0]
+//   perm   = [2, 1, 3]
+//   After:   tour = [0, 2, 1, 3]
+
+
+// extend works with any IntoIterator:
+let mut v = vec![1, 2];
+v.extend(vec![3, 4]);                     // another Vec
+v.extend([5, 6]);                          // an array
+v.extend(7..=9);                           // a range
+v.extend((10..=12).rev());                 // any iterator
+// v is now [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 11, 10]
+
+
+// The imperative equivalent — extend is the one-line sugar:
+for x in perm {
+    tour.push(x);
+}
+
+
+// Family of grow-in-place methods on Vec<T>:
+//   .push(x)         append one element
+//   .extend(iter)    append many elements from any iterator
+//   .append(&mut v)  move every element of another Vec into this one
+//                    (drains the source — different from extend, which
+//                    only requires an IntoIterator, not ownership)`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`slice::windows(k)\` returns an iterator of **overlapping length-\`k\` views** into a slice.  For \`tour = [0, 2, 1, 3]\`, \`.windows(2)\` yields \`[0, 2]\`, then \`[2, 1]\`, then \`[1, 3]\` — every pair of adjacent elements.  This is the canonical way to walk a sequence by consecutive pairs (or triples, or longer chunks).  Each two-window in the Hamilton check is one **leg of the tour**: \`w[0] → w[1]\`.  Calling \`.all(|w| adj[w[0]][w[1]])\` returns \`true\` exactly when every leg is an actual edge in the graph — i.e., when the permutation describes a real path through the graph.  A companion method \`.chunks(k)\` walks the slice in **non-overlapping** chunks instead; pick whichever fits the question.`,
+        code: `// .windows(k) — overlapping views into a slice.
+let v = [0, 2, 1, 3];
+
+for w in v.windows(2) {
+    println!("{:?}", w);
+}
+// [0, 2]
+// [2, 1]
+// [1, 3]
+//
+// Three windows from a 4-element slice — n - k + 1 of them in general.
+
+
+// Page 29's use — check every edge of the tour:
+let ok = tour.windows(2).all(|w| adj[w[0]][w[1]]);
+//                       ─────  ──────────────────
+//                       each    "is there an edge from w[0] to w[1]?"
+//                       window
+//
+// .all() short-circuits — the moment one leg isn't an edge,
+// the loop stops and returns false.
+
+
+// Larger windows when you need more context:
+let v = [1, 2, 3, 4, 5];
+for w in v.windows(3) {                    // sliding window of size 3
+    println!("{:?}", w);
+}
+// [1, 2, 3]
+// [2, 3, 4]
+// [3, 4, 5]
+
+
+// Companion — .chunks(k) walks NON-overlapping chunks:
+for c in v.chunks(2) {
+    println!("{:?}", c);
+}
+// [1, 2]
+// [3, 4]
+// [5]                                      ← last chunk may be shorter
+//
+// Use .chunks_exact(k) to skip the short tail.
+
+
+// Quick reference:
+//   .windows(k)        overlapping length-k views, n - k + 1 of them
+//   .chunks(k)         non-overlapping length-k chunks, ⌈n/k⌉ of them
+//   .chunks_exact(k)   same as chunks, but skips the short final chunk`,
         lang: 'rust'
       }
     ],
@@ -2532,6 +3353,107 @@ When in doubt, ask the requester: what counts as a unit of work — the road, or
     reachable[t]
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `\`continue;\` jumps to the **next iteration** of the enclosing loop, skipping the rest of the current iteration's body.  It is the partner of \`break;\`, which exits the loop entirely.  On page 30 the line \`if v > t { continue; }\` says "if this item is already bigger than the target, no subset including it can possibly hit \`t\`, so skip the inner work and move on to the next item."  Without \`continue\`, the same logic needs a deeper-nested \`if\` — same behaviour, more indentation, harder to scan.  Both \`continue\` and \`break\` accept loop labels (e.g., \`'outer\`) so you can skip or exit an outer loop from inside an inner one.`,
+        code: `// continue — jump to the next iteration of the enclosing loop.
+for i in 0..10 {
+    if i % 2 == 0 { continue; }       // skip even numbers
+    println!("{}", i);                  // prints 1, 3, 5, 7, 9
+}
+
+// break — exit the loop entirely.
+for i in 0..10 {
+    if i == 5 { break; }
+    println!("{}", i);                  // prints 0, 1, 2, 3, 4
+}
+
+
+// Page 30's use — skip items that can't possibly fit:
+for &v in items {
+    let v = v as usize;
+    if v > t { continue; }              // item too big — nothing to update
+    for s in (v..=t).rev() {
+        if reachable[s - v] { reachable[s] = true; }
+    }
+}
+
+// Equivalent without continue — same logic, deeper nesting:
+for &v in items {
+    let v = v as usize;
+    if v <= t {
+        for s in (v..=t).rev() {
+            if reachable[s - v] { reachable[s] = true; }
+        }
+    }
+}
+// continue flattens the structure — the body stays at one indentation level.
+
+
+// Labels for nested loops — break or continue a specific outer level:
+'outer: for i in 0..5 {
+    for j in 0..5 {
+        if j == 3 { continue 'outer; }   // skip the rest of THIS i
+        if i == 4 { break 'outer; }      // exit the outer loop entirely
+        println!("{} {}", i, j);
+    }
+}`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`.rev()\` reverses an iterator, yielding the elements in the opposite order.  On page 30, \`(v..=t).rev()\` walks \`s\` from \`t\` down to \`v\` instead of \`v\` up to \`t\`.  It works only for iterators that implement \`DoubleEndedIterator\` — ranges, slices, \`VecDeque\`, and most ordered collections do; hash-map iterators and one-shot streams do not.  The reason this specific DP **needs** reverse order is a classic subset-sum trick.  When the loop marks \`reachable[s] = true\` because \`reachable[s - v]\` was true, it must be reading \`reachable\` *as it was before the current item was considered* — otherwise we would accidentally use the same item twice (counting it once at \`s - v\` and again at \`s\`).  Iterating from \`t\` downward guarantees every read of \`reachable[s - v]\` sees an entry not yet touched in this pass, preserving the "include this item zero or one time" rule of 0/1 subset sum.  Forward iteration would silently turn the function into *unbounded* subset sum, where every item can be used any number of times.`,
+        code: `// .rev() reverses an iterator.  Works for any DoubleEndedIterator.
+let r = (1..=5).rev();
+let v: Vec<i32> = r.collect();           // [5, 4, 3, 2, 1]
+
+
+// Page 30's use — walk s from t down to v:
+for s in (v..=t).rev() {
+    if reachable[s - v] { reachable[s] = true; }
+}
+
+// What changes vs forward iteration:
+//
+//   Forward (v..=t)              reachable[s - v] read AFTER it was updated
+//                                this same pass → item used multiple times
+//                                → solves UNBOUNDED subset sum (different problem)
+//
+//   Reverse (v..=t).rev()        reachable[s - v] always reads an entry not
+//                                yet touched this pass → item used at most once
+//                                → solves 0/1 subset sum (the page 30 problem)
+
+
+// Worked example.  items = [3], target t = 6.
+// Initial:  reachable = [T, F, F, F, F, F, F]      (only sum=0 is reachable)
+
+// Iterate FORWARD (s = 3, 4, 5, 6):
+//   s=3: reachable[0]=T → reachable[3] := T
+//   s=4: reachable[1]=F
+//   s=5: reachable[2]=F
+//   s=6: reachable[3]=T → reachable[6] := T        ← BUG: 6 = 3 + 3, used twice
+//   final: [T, F, F, T, F, F, T]
+
+// Iterate REVERSE (s = 6, 5, 4, 3):
+//   s=6: reachable[3]=F                            (not yet updated this pass)
+//   s=5: reachable[2]=F
+//   s=4: reachable[1]=F
+//   s=3: reachable[0]=T → reachable[3] := T
+//   final: [T, F, F, T, F, F, F]                   ← correct 0/1 result
+
+
+// Other DoubleEndedIterator combinators worth knowing:
+let v = vec![1, 2, 3, 4, 5];
+
+v.iter().rev().for_each(|x| print!("{} ", x));     // 5 4 3 2 1
+v.iter().next_back();                               // Some(&5) — back without rev()
+v.iter().rfind(|&&x| x > 2);                        // Some(&5) — find from the back
+
+
+// HashMap iterators are NOT DoubleEndedIterator — order is hash-defined,
+// so "reverse" has no meaning:
+let map: HashMap<&str, i32> = /* ... */;
+// map.iter().rev();   // error — DoubleEndedIterator not implemented`,
+        lang: 'rust'
       }
     ],
     tldr: 'Picking items that sum to exactly the target is NP-complete but practically tractable when numbers are reasonable.',
@@ -2571,6 +3493,58 @@ This is also the simplest reduction target.  Many other NP-complete problems can
     }
     bins
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`Vec::new()\` and \`vec![]\` both produce an empty \`Vec\` — for the empty case they are equivalent (the \`vec!\` macro literally expands to \`Vec::new()\` when there are no elements).  Neither allocates heap memory until the first push.  The choice between them is stylistic.  Convention: reach for \`Vec::new()\` when you are declaring an empty vec that will be filled later (the constructor name is visible — "I am starting empty"); reach for the \`vec!\` macro when you have initial contents (\`vec![1, 2, 3]\`) or the repeat form (\`vec![0; n]\`).  Two practical differences exist.  \`Vec::new()\` is a \`const fn\`, so it works in const contexts where the macro does not.  And with an explicit type annotation on the binding, \`= Vec::new()\` reads slightly more clearly than \`= vec![]\` — the constructor name reinforces what the line is doing.  A third constructor worth knowing is \`Vec::with_capacity(n)\` — empty (\`.len() == 0\`) but pre-allocated room for \`n\` elements, useful when you know roughly how many items will be pushed and want to skip the doubling reallocations a growing vec performs.`,
+        code: `// Three ways to create a Vec, each useful in different cases.
+
+// 1. Empty, no allocation yet.  Either form works; vec![] is the macro
+//    and Vec::new() is the constructor — equivalent for the empty case.
+let v: Vec<i32> = Vec::new();              // constructor form
+let v: Vec<i32> = vec![];                   // macro form
+
+// 2. With initial contents — the macro is the obvious choice.
+let v: Vec<i32> = vec![1, 2, 3];            // literal form
+let v: Vec<i32> = vec![0; 100];             // repeat form: 100 zeros
+
+// 3. Empty but with pre-allocated capacity — neither of the above.
+let v: Vec<i32> = Vec::with_capacity(100);  // empty (len == 0)
+                                             // room for 100 pushes
+                                             // without any realloc
+
+
+// Why Vec::new() on page 31 instead of vec![]?
+//
+// Convention.  "empty + will be filled later" reads cleanly with the
+// constructor; the presence of "Vec::new()" makes the empty start
+// visually distinct from "vec![..items..]" with content.  Both compile
+// to identical code.
+
+let mut bins: Vec<Vec<u32>> = Vec::new();
+for size in items {
+    // ... bins.push(vec![size]) or bins[i].push(size) inside the loop ...
+}
+
+
+// Practical differences worth knowing:
+//
+//   Vec::new()              const fn — usable in const contexts.
+//                           static EMPTY: Vec<i32> = Vec::new();  ← compiles
+//
+//   vec![]                  macro — not usable in const contexts.
+//                           static EMPTY: Vec<i32> = vec![];      ← error
+//
+//   Vec::with_capacity(n)   empty, but heap-allocates room for n elements.
+//                           Use when you know roughly how big the vec will
+//                           grow, to avoid the doubling reallocations.
+
+
+// All three start at .len() == 0 — the difference is how much heap
+// memory the vec is sitting on:
+Vec::<i32>::new().capacity();              // 0
+vec![1, 2, 3].capacity();                   // typically 3 (or more)
+Vec::<i32>::with_capacity(100).capacity(); // 100`,
         lang: 'rust'
       }
     ],
@@ -2619,6 +3593,64 @@ fn pick_warehouses(open_cost: &[f64], demand: &[Vec<f64>]) -> Vec<bool> {
     (0..n).map(|i| sol.value(open[i]) > 0.5).collect()
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `\`.zip()\` is an iterator combinator that takes two iterators and yields **pairs** of their elements — one from each, in lockstep.  \`open.iter().zip(open_cost)\` pairs each binary variable in \`open\` with the corresponding cost in \`open_cost\`, producing an iterator of \`(Variable, &f64)\` tuples.  The closure \`|(v, &c)| v * c\` destructures each pair into the variable and its cost (the \`&c\` reaches past the reference, the same trick from page 15), then builds the symbolic product.  \`.sum()\` totals every product into a single \`Expression\` — exactly the "minimise total cost of opened warehouses" objective.  Two details worth knowing about \`zip\`: it stops at the **shorter** of the two iterators (so if the lengths differ, the tail of the longer one is dropped silently), and \`itertools::Itertools::zip_eq\` is the panic-on-mismatch variant for cases where equal length is an invariant you want enforced loudly.`,
+        code: `// .zip() — walk two iterators in lockstep, yielding pairs.
+
+let names = ["Alice", "Bob", "Carol"];
+let ages  = [30, 25, 40];
+
+for (name, age) in names.iter().zip(ages.iter()) {
+    println!("{} is {}", name, age);
+}
+// Alice is 30
+// Bob   is 25
+// Carol is 40
+
+
+// Page 32's use — pair each binary variable with its cost,
+// build a symbolic cost expression per pair, sum into the objective:
+let objective: good_lp::Expression = open.iter().zip(open_cost)
+    .map(|(v, &c)| v * c)
+    .sum();
+//        ─         ───
+//        │         └── &c destructures the &f64 reference,
+//        │             same trick as for &(a, b) on page 15
+//        └──────── (&Variable, &f64) pair from the zipped iterators
+
+
+// Equivalent index-based version — works, less idiomatic:
+let objective: good_lp::Expression = (0..n)
+    .map(|i| open[i] * open_cost[i])
+    .sum();
+//
+// The zip version avoids the indexing arithmetic entirely.  Slightly
+// safer (no chance of an off-by-one when the loop is rearranged) and
+// it reads top-to-bottom as "for each (variable, cost) pair, ..."
+
+
+// Important: zip stops at the SHORTER iterator.  If lengths differ,
+// the tail of the longer one is silently dropped:
+let a = [1, 2, 3, 4, 5];
+let b = [10, 20];
+let pairs: Vec<_> = a.iter().zip(b.iter()).collect();
+// = [(&1, &10), (&2, &20)]    ← only two pairs; 3, 4, 5 are dropped
+
+
+// If "same length" is an invariant, use itertools::zip_eq — panics
+// on mismatch instead of silently truncating:
+use itertools::Itertools;
+let pairs: Vec<_> = a.iter().zip_eq(b.iter()).collect();
+//                                              └── panics: unequal lengths
+
+
+// Related combinators that operate on multiple iterators:
+//   .zip(other)              pairs in lockstep, stops at shorter
+//   .chain(other)            yields all of self, then all of other
+//   .interleave(other)       alternates: a₀ b₀ a₁ b₁ ...   (itertools)
+//   .cartesian_product(b)    every (a, b) pair             (itertools)`,
+        lang: 'rust'
       }
     ],
     tldr: 'Linear programming with integer variables is NP-complete.  But modern solvers handle hundreds of thousands of variables on practical instances.',
@@ -2663,6 +3695,63 @@ fn vertex_cover_2approx(n: usize, edges: &[(usize, usize)]) -> HashSet<usize> {
     }
     cover
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`.enumerate()\` is an iterator combinator that pairs every element with its 0-based index, yielding \`(usize, item)\` tuples.  Same idea as Python's \`enumerate(list)\` or JavaScript's \`Array.prototype.entries()\`.  Page 33 uses it twice — both times to walk the edges while keeping the index handy for indexing into the \`covered\` boolean array.  The double destructuring \`(i, &(u, v))\` unpacks both layers in one step: the outer tuple is the \`(index, &edge)\` pair from \`enumerate\`, and the inner \`&(u, v)\` reaches past the reference to copy the two \`usize\` endpoints (the same \`Copy\` trick from page 15).  After binding, \`i\` is the edge index, \`u\` and \`v\` are the endpoints — clean to use, no \`*\` dereferences needed in the body.`,
+        code: `// .enumerate() — pair each element with its 0-based index.
+let names = ["Alice", "Bob", "Carol"];
+
+for (i, name) in names.iter().enumerate() {
+    println!("{}: {}", i, name);
+}
+// 0: Alice
+// 1: Bob
+// 2: Carol
+
+
+// Page 33's pattern — destructure index AND inner tuple values at once:
+for (i, &(u, v)) in edges.iter().enumerate() {
+//   ─  ──────
+//   │      │
+//   │      └── &(u, v): reach past the reference and copy out the
+//   │           two usize values (Copy trick from page 15)
+//   └──────── i: the index, usize, from enumerate()
+    if covered[i] { continue; }
+    cover.insert(u);
+    cover.insert(v);
+    // ...
+}
+
+
+// Equivalent without enumerate — index-heavy, more typing:
+for i in 0..edges.len() {
+    if covered[i] { continue; }
+    let (u, v) = edges[i];               // separate indexing step
+    cover.insert(u);
+    cover.insert(v);
+}
+
+
+// .enumerate() chains with other combinators — works on any iterator:
+let scores = vec![85, 92, 78, 95];
+
+let above_80: Vec<usize> = scores
+    .iter()
+    .enumerate()
+    .filter(|(_, &s)| s > 80)
+    .map(|(i, _)| i)
+    .collect();
+// = [0, 1, 3]    — indices of scores above 80
+
+
+// Note the order: (index, item).  Same convention as Python's enumerate.
+//
+// Family of "yield more info with each element" combinators:
+//   .enumerate()         (index, item) pairs
+//   .zip(other)          (item, other_item) pairs        (page 32)
+//   .peekable()          .peek() looks at the next item without consuming it
+//   .step_by(n)          take every nth element`,
         lang: 'rust'
       }
     ],
@@ -2714,6 +3803,71 @@ The bound is the negotiation.  Use it.`
         .unwrap_or(0)
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `\`*values.iter().max().unwrap_or(&1)\` is a four-step chain that hides a lot of work in one line.  Read it right-to-left.  \`values.iter().max()\` walks the slice and returns the maximum, but as \`Option<&u32>\` — \`None\` if the slice is empty, \`Some(&max)\` otherwise.  The \`Option\` exists because a max-of-an-empty-collection has no answer.  \`.unwrap_or(&1)\` provides a default: if \`max()\` returned \`Some(&v)\` we keep \`&v\`, and if it returned \`None\` we substitute \`&1\` so the rest of the chain has a value to work with.  The fallback type has to match what \`max\` yields — \`&u32\` — so it is \`&1\`, not just \`1\`.  Finally, the leading \`*\` dereferences the resulting \`&u32\` back to a plain \`u32\` so it can be cast to \`f64\` for the subsequent floating-point arithmetic.  Same chain in nine words: "the largest value, or 1 if there are none."`,
+        code: `// Read right-to-left to follow the type at each step:
+//
+//   *values.iter().max().unwrap_or(&1) as f64
+//   ────────────────────────────────── ────
+//             u32                       f64
+//
+//   values             : &[u32]
+//   values.iter()      : iterator of &u32
+//   .max()             : Option<&u32>       — Option, because slice may be empty
+//   .unwrap_or(&1)     : &u32                — Some(&v) kept; None substitutes &1
+//   *                  : u32                 — dereference the reference
+
+
+// Step by step on a concrete slice:
+let values: &[u32] = &[3, 7, 2, 9, 4];
+
+let m: Option<&u32> = values.iter().max();   // Some(&9)
+let m: &u32         = m.unwrap_or(&1);        // &9
+let m: u32          = *m;                      // 9
+
+
+// Why each piece is needed:
+//
+//   .iter()         iterating a borrowed slice yields REFERENCES (&u32),
+//                    not owned values — the slice doesn't own the data
+//                    and can't hand out copies; it hands out views.
+//
+//   .max()          returns Option<T> because the iterator might be
+//                    empty.  No max exists for an empty collection.
+//
+//   .unwrap_or(&1)  gives a fallback for the None case.  The type must
+//                    match what max yields, so &1 (a reference), not 1.
+//                    Defaulting to 1 here prevents downstream division
+//                    by zero when computing the scale factor k.
+//
+//   *               collapse &u32 → u32 so the value can be cast to f64.
+
+
+// Equivalent with a match expression — more verbose, same behaviour:
+let v_max: f64 = match values.iter().max() {
+    Some(&v) => v as f64,
+    None     => 1.0,
+};
+
+
+// Equivalent with .copied() (page 18) to strip the reference earlier:
+let v_max: f64 = values
+    .iter()
+    .copied()                            // iterator of u32 instead of &u32
+    .max()                                // Option<u32>
+    .unwrap_or(1) as f64;                 // u32, no deref needed
+
+
+// Family of "unwrap with a fallback" methods on Option<T>:
+//
+//   .unwrap_or(default)         supply a fallback value directly
+//   .unwrap_or_else(|| compute) compute the fallback lazily (only on None)
+//   .unwrap_or_default()         use T's Default::default() value (0, "", etc.)
+//
+// .unwrap_or_else is the right choice when the fallback is expensive to
+// build — the closure only runs in the None case.`,
+        lang: 'rust'
       }
     ],
     tldr: 'Some hard problems have arbitrarily tight approximations (FPTAS).  Some have only constant-factor (APX).  Some are hopeless.',
@@ -2758,6 +3912,61 @@ The engine behind all of this is the PCP theorem from 1998, which characterizes 
     }
     None
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`let Some((u, v)) = uncovered else { return Some(vec![]); };\` is the **\`let-else\` pattern** (Rust 1.65+).  Shape: \`let PATTERN = EXPRESSION else { DIVERGING_BLOCK };\`.  If the pattern matches the right-hand side, the bindings come into scope normally.  If it does not match, the \`else\` block runs — and that block **must diverge**: \`return\`, \`break\`, \`continue\`, \`panic!\`, or a function returning \`!\` (the never-type).  The point is that the bindings stay in scope for the rest of the enclosing function, no nesting required.  Compare with \`if let Some(x) = … { /* large body using x */ } else { return; }\` — the let-else version keeps the body at the same indentation level and the early-exit terse.  On page 35 the algorithm walks edges recursively; \`uncovered\` is the first edge that still needs covering, \`Option<(usize, usize)>\`.  Either there is one (the function continues with \`u\` and \`v\` in scope), or there isn't, in which case an empty cover is already a valid answer and the else branch returns it immediately.`,
+        code: `// let-else — bind on success, diverge on failure.
+//
+//   let PATTERN = EXPRESSION else {
+//       /* diverging block: return, break, continue, panic, etc. */
+//   };
+//   /* PATTERN bindings are in scope from here for the rest of the fn */
+
+
+// Page 35's specific line:
+let uncovered: Option<(usize, usize)> = edges.iter().copied().next();
+
+let Some((u, v)) = uncovered else {
+    return Some(vec![]);                  // no edges left → empty cover wins
+};
+// u and v are now in scope for the rest of the function.
+
+
+// Same effect with if-let (page 28) — more nesting:
+if let Some((u, v)) = edges.iter().copied().next() {
+    // … large body using u and v …
+} else {
+    return Some(vec![]);
+}
+
+
+// Same effect with match — even more typing:
+let (u, v) = match edges.iter().copied().next() {
+    Some(pair) => pair,
+    None       => return Some(vec![]),
+};
+
+
+// The else block is REQUIRED to diverge.  All of these compile:
+let Some(x) = maybe else { return; };
+let Some(x) = maybe else { break; };
+let Some(x) = maybe else { continue; };
+let Some(x) = maybe else { panic!("bug"); };
+let Some(x) = maybe else { std::process::exit(1); };
+
+// Rejected — else must NOT fall through:
+let Some(x) = maybe else { println!("oops"); };   // error: expected divergence
+
+
+// When let-else shines vs if-let:
+//
+//   if-let     equally weighted branches; both have real work to do.
+//
+//   let-else   one happy path, one early-exit.
+//              You want the happy path at the top indentation level.
+//
+// Most "guard clause" early-returns are cleaner as let-else.`,
         lang: 'rust'
       }
     ],
@@ -2810,6 +4019,153 @@ fn anneal<S: Clone>(
     }
     best
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`cost: impl Fn(&S) -> f64\` declares a parameter that accepts any value implementing the trait \`Fn(&S) -> f64\` — any function or closure that takes \`&S\` and returns \`f64\`.  This is **\`impl Trait\` in argument position**, syntactic sugar for a generic with a trait bound (\`<F: Fn(&S) -> f64>\`).  Rust has three closely-related function traits: \`Fn(...) -> R\` can be called any number of times and only borrows its captures (the most permissive); \`FnMut(...) -> R\` can be called any number of times but is allowed to mutate captures; \`FnOnce(...) -> R\` can be called exactly once and is allowed to move out of captures (the most restrictive caller).  The compiler picks the loosest trait each closure can satisfy.  Pick the loosest trait your callee actually needs — \`Fn\` here, because the cost function is called many times and reads but does not change its captures.  Callers can then pass a regular \`fn\` item, a closure, or a function pointer interchangeably.`,
+        code: `// Three function traits — pick the loosest one your code actually needs.
+//
+//   Fn(args) -> R       can be called any number of times.
+//                       only borrows its captures.  most permissive caller.
+//
+//   FnMut(args) -> R    can be called any number of times.
+//                       can MUTATE its captures.  caller needs &mut access.
+//
+//   FnOnce(args) -> R   can be called exactly once.
+//                       can MOVE out of captures.  most restrictive caller.
+
+
+// Page 36's signature:
+fn anneal<S: Clone>(
+    /* ... */
+    cost:     impl Fn(&S) -> f64,                       // called many times
+    neighbor: impl Fn(&S, &mut dyn rand::RngCore) -> S, // also Fn-compatible
+    /* ... */
+) -> S { /* ... */ }
+
+
+// Caller side — any of these work:
+
+// 1. A free function.
+fn distance(s: &Point) -> f64 { (s.x * s.x + s.y * s.y).sqrt() }
+anneal(/* ... */, distance, /* ... */);
+
+// 2. A closure capturing nothing.
+anneal(/* ... */, |s: &Point| s.x.abs() + s.y.abs(), /* ... */);
+
+// 3. A closure capturing a value by reference (Fn-compatible — borrows only).
+let target = 10.0;
+anneal(/* ... */, |s: &Point| (s.x - target).abs(), /* ... */);
+
+// 4. A closure that MUTATES — needs FnMut, not Fn.  Page 36's Fn bound rejects:
+let mut call_count = 0;
+anneal(/* ... */, |s: &Point| { call_count += 1; s.x }, /* ... */);
+//                                ─────────────  error: would need FnMut
+
+
+// impl Trait vs explicit generic — same meaning, different syntax:
+fn anneal_v1<S, F: Fn(&S) -> f64>(state: S, cost: F) -> f64 { cost(&state) }
+fn anneal_v2<S>(state: S, cost: impl Fn(&S) -> f64) -> f64 { cost(&state) }
+
+// impl Trait in argument position is sugar for an anonymous generic
+// parameter.  More concise; the explicit form is sometimes preferred
+// when you want to refer to the type name elsewhere (e.g. with a turbofish).`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`<S: Clone>\` declares \`S\` as a **generic type parameter with a trait bound**: \`S\` can be any type, as long as it implements the \`Clone\` trait.  Trait bounds are how Rust expresses "any type T that supports these specific operations."  Without the bound the function would not compile, because \`let mut best = state.clone();\` calls \`Clone::clone()\` and the compiler will not let you call a method you have not proven the type supports.  Annealing needs \`Clone\` because tracking "best state seen so far" means duplicating the state at the moment it became the best — you cannot keep both the current and best state without duplication.  Trait bounds compose with \`+\`: \`<S: Clone + Send>\` requires both Clone and Send.  For complex bounds, a \`where\` clause keeps the function signature readable.`,
+        code: `// Generic with a single trait bound — S is any type that implements Clone.
+fn anneal<S: Clone>(
+    mut state: S,
+    /* ... */
+) -> S {
+    let mut best = state.clone();         // .clone() requires S: Clone
+    /* ... */
+    best
+}
+
+// Without the Clone bound:
+fn anneal_broken<S>(state: S) -> S {
+    let best = state.clone();              // error: no method \`clone\` found
+    best                                    //         (S has no traits to call)
+}
+
+
+// Compose bounds with +:
+fn save<S: Clone + std::fmt::Debug>(s: &S) {
+    println!("saving {:?}", s);             // requires Debug
+    let _backup = s.clone();                 // requires Clone
+}
+
+
+// where clauses — same meaning, more readable for many or long bounds:
+fn anneal_wide<S>(
+    state: S,
+    cost: impl Fn(&S) -> f64,
+) -> S
+where
+    S: Clone + Send + 'static,
+{
+    /* ... */
+}
+
+
+// Common bounds and what they enable:
+//   Clone           .clone() — make a duplicate
+//   Copy            implicit by-value copy (page 15)
+//   Debug           {:?} formatting
+//   Display         {} formatting
+//   PartialEq, Eq   == comparisons
+//   Hash            use as HashMap or HashSet key
+//   Send            safe to move to another thread
+//   Sync            safe to share between threads
+//   Iterator        be a source for for-loops and combinators
+//
+// Add a bound only for the operations you actually need.  Asking for
+// more than necessary forces callers to implement traits they don't need.`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`temp *= cooling\` is a **compound assignment** — equivalent to \`temp = temp * cooling\`.  Rust has the standard family from C / C++ / Python / JavaScript: \`+=\`, \`-=\`, \`*=\`, \`/=\`, \`%=\`, plus the bitwise variants \`&=\`, \`|=\`, \`^=\`, \`<<=\`, \`>>=\`.  On page 36 this line gradually reduces the temperature each iteration — with \`cooling = 0.99\`, the temperature drops to about 36% of its starting value after 100 iterations and to about 0.7% after 500.  The acceptance probability \`(-delta / temp).exp()\` depends on \`temp\`, so as the schedule cools, the algorithm becomes more selective: high temp accepts almost any worsening move; low temp behaves like greedy descent.  The smooth interpolation between "explore" and "exploit" is the whole point of simulated annealing.`,
+        code: `// temp *= cooling  ≡  temp = temp * cooling
+
+let mut temp: f64 = 100.0;
+let cooling: f64 = 0.99;
+
+for _ in 0..100 { temp *= cooling; }
+// temp ≈ 36.6
+
+for _ in 0..400 { temp *= cooling; }
+// temp ≈ 0.66
+
+
+// The full family of compound assignment operators:
+//
+//   +=  -=  *=  /=  %=        arithmetic
+//   &=  |=  ^=                  bitwise AND / OR / XOR
+//   <<= >>=                     bitwise shift
+
+
+// Why simulated annealing uses geometric cooling:
+//
+// The acceptance probability for a worsening move is exp(-delta / temp).
+//
+//   high temp  →  exp(small magnitude) ≈ 1     ← accepts almost any move
+//   low temp   →  exp(large magnitude) ≈ 0     ← accepts only improvements
+//
+// Geometric cooling (temp *= cooling) gives smooth interpolation between
+// "explore" and "exploit" — early iterations bounce around the solution
+// landscape, late iterations settle into a local minimum.
+//
+// Linear, logarithmic, and adaptive schedules exist; geometric is the
+// canonical default and tunes with one parameter.
+
+
+// One detail to note: compound assignment is a single operation, not two.
+// Rust's borrow checker can treat \`x *= y\` differently from \`x = x * y\`
+// for operator-overloaded types (implementing AddAssign separately from
+// Add can avoid an intermediate value).  For plain numbers there's no
+// observable difference.`,
         lang: 'rust'
       }
     ],
@@ -2932,6 +4288,73 @@ fn allocate_whole(c: &[f64]) -> Vec<i32> { todo!("good_lp + HiGHS, binary or int
 fn take_fractions(items: &[(u32, u32)], cap: u32) -> f64 { todo!("sort by value/weight, fill") }
 // Expensive — 0/1 knapsack.  DP for small budgets, ILP otherwise.
 fn take_whole_items(items: &[(u32, u32)], cap: u32) -> u32 { todo!("knapsack DP") }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`todo!\` is one of Rust's **placeholder macros**.  It compiles into any context that expects a value, but at runtime calling it panics with "not yet implemented."  The trick is that \`todo!\` returns the **never type** \`!\` — a type that has no values.  Because \`!\` can be coerced into any other type (a never-value can stand in for any value, since execution never actually reaches the coercion point), the compiler accepts \`todo!()\` as the body of a function with any return type, as one arm of a match expression, or anywhere else a value is expected.  Page 38 uses \`todo!("...")\` and friends as **executable annotations** — the function signatures compile and document each twin's intended algorithm, and any code that actually calls one of them crashes with a useful message instead of silently producing a wrong answer.  Three closely-related macros share the same family.  \`todo!()\` says "I plan to implement this later" — the development-time TODO marker.  \`unimplemented!()\` says "I have intentionally left this unimplemented" — typically for trait method stubs you do not want to fill in.  \`unreachable!()\` is for code paths the programmer believes can never execute; if it ever fires, it indicates a logic bug in the surrounding code.`,
+        code: `// todo! — placeholder for code you'll write later.
+fn area_of_circle(radius: f64) -> f64 {
+    todo!()
+}
+// Compiles.  Calling it panics with: "not yet implemented"
+//   thread 'main' panicked at 'not yet implemented'
+
+// With a message — gives the reader a hint about what's missing:
+fn area_of_circle(radius: f64) -> f64 {
+    todo!("use std::f64::consts::PI * radius * radius")
+}
+
+
+// Why todo! fits any return type — the never type !
+//
+//   ! is the type of "this expression never produces a value."
+//   It can be coerced into any type, because a never-value can stand
+//   in for any value (no actual conversion happens — execution never
+//   reaches the coercion point).
+
+fn returns_string() -> String      { todo!() }       // ! → String  ✓
+fn returns_vec()    -> Vec<i32>    { todo!() }       // ! → Vec<i32> ✓
+fn returns_option() -> Option<u32> { todo!() }       // ! → Option   ✓
+
+// Same in a match arm — when one arm panics, the others decide the type:
+let label = match score {
+    s if s >= 90 => "A",
+    s if s >= 80 => "B",
+    _            => todo!("rest of the grading scale"),
+};
+
+
+// Page 38's use — executable documentation of intent:
+//
+//   fn inspect_every_road(roads: &[(usize, usize)]) -> Option<Vec<usize>> {
+//       todo!("Hierholzer")            ← reader sees the planned algorithm
+//   }
+//
+// The compiler accepts the file; tests against any twin still fail
+// loudly with the algorithm hint, never producing a wrong answer silently.
+
+
+// Three placeholder macros — same shape, different intent:
+//
+//   todo!()           "I plan to implement this later."
+//                     Use during development as a TODO marker.
+//
+//   unimplemented!()  "I have intentionally left this unimplemented."
+//                     Use for trait method stubs you don't want to fill in.
+//
+//   unreachable!()    "Execution should never reach this point."
+//                     Use to assert invariants; firing means a logic bug.
+//
+// All three return !, so they fit in any expression slot.
+
+
+// One more relative — for hand-written runtime assertions:
+let n: i32 = read_input();
+if n < 0 {
+    panic!("expected non-negative number, got {}", n);
+}
+// panic!() also returns ! and unconditionally crashes.  Use it when
+// you have a specific runtime check whose failure means "stop everything."`,
         lang: 'rust'
       }
     ],
