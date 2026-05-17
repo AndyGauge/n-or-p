@@ -3,7 +3,7 @@
   import { base } from '$app/paths';
   import { next, prev, flat } from '$lib/outline.js';
   import { createPager } from 'sveltekitbook/gestures';
-  import { md, mdBlock } from 'sveltekitbook/md';
+  import { md, mdBlock } from '$lib/md.js';
   import Giscus from 'sveltekitbook/Giscus.svelte';
   import PageMeta from 'sveltekitbook/PageMeta.svelte';
   import { TITLE, GISCUS, SITE_URL } from '$lib/config.js';
@@ -288,6 +288,19 @@
   }
   .body-text :global(p) { margin: 0 0 1.05em; }
   .body-text :global(p:last-child) { margin-bottom: 0; }
+
+  /* Glossary terms — dotted underline signals "hover for definition." */
+  :global(a.hw-glossary-link) {
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--accent);
+    cursor: help;
+    transition: border-color 160ms ease, background 160ms ease;
+  }
+  :global(a.hw-glossary-link:hover) {
+    border-bottom-style: solid;
+    background: rgba(20, 17, 13, 0.05);
+  }
 
   .steps {
     grid-column: 2;

@@ -4219,6 +4219,51 @@ fn crate_for(test: CheapTest) -> &'static str {
     }
 }`,
         lang: 'rust'
+      },
+      {
+        prose: `\`enum\` is Rust's tagged union — a single type whose values can be one of several named **variants**.  Page 9's \`Option\` and \`Result\` were enums with data-carrying variants (\`Some(T)\` holding a value, \`Err(E)\` holding an error).  This page's \`CheapTest\` is the simpler form — every variant is a **unit variant**, carrying no payload.  Each variant is just a name that the type system treats as distinct.  Compared to a plain integer or string constant, an enum gets you the **exhaustiveness check** (page 9 again): the compiler refuses to compile a \`match\` that doesn't cover every variant, so adding a seventh test means the compiler points at every \`match\` in the codebase that needs updating.  That refactor-safety is the whole reason to reach for an enum instead of a string.`,
+        code: `// Unit variants — no payload, just a name.
+enum Direction { North, South, East, West }
+
+// Data-carrying variants — each variant holds different data.
+enum Shape {
+    Circle(f64),               // tuple-style: one f64 (radius)
+    Rect(f64, f64),            // tuple-style: width, height
+    Point,                      // unit variant — no data
+    Annotated { name: String, kind: u8 },   // struct-style: named fields
+}
+
+// Build a variant by writing its full path:
+let d = Direction::East;
+let s = Shape::Circle(3.0);
+
+
+// Why an enum and not a string constant or integer?
+//
+//   1. Exhaustiveness — match arms get checked at compile time.
+//      Add a variant → compiler points at every match that needs updating.
+//
+//   2. Type safety — you can't accidentally pass a Shape where a
+//      Direction is expected; the types are distinct.
+//
+//   3. Pattern matching — destructure data-carrying variants in one step.
+//      Strings can't do that.
+
+
+// Page 37 uses pure unit variants — the checklist categories.
+// The match in \`crate_for\` covers all six, and the compiler will
+// refuse to compile if a seventh category gets added without a
+// corresponding arm.
+
+
+// One last note — enums under the hood:
+//
+//   Rust stores an enum as a discriminant (small integer tag) plus
+//   enough space for the largest variant's data.  Unit-only enums
+//   compile down to just the tag — \`size_of::<CheapTest>() == 1\` byte.
+//   Data-carrying enums are bigger.  Either way, dispatch on the
+//   variant is a single comparison, not a function call or a hash.`,
+        lang: 'rust'
       }
     ],
     tldr: 'Six structural tests.  If any passes, your problem is in the cheap category and a library exists.  Run them before sizing the work.',
@@ -4425,6 +4470,84 @@ fn wrong_category(e: &Estimate) -> Vec<&'static str> {
     }
     flags
 }`,
+        lang: 'rust'
+      },
+      {
+        prose: `\`struct\` is Rust's record type — a single value with several named **fields**, each with its own type.  This page's \`Estimate\` bundles a description, the proposed tool, and six boolean flags into one passable thing.  Constructed with **struct literal** syntax: \`Estimate { name: value, ... }\` (field name on the left, value on the right).  Fields are read or written with \`.\` notation — \`e.proposed_tool\`, \`e.data_is_dag\`.  Functions take structs by reference (\`&Estimate\`) to inspect without consuming, by mutable reference (\`&mut Estimate\`) to update in place, or by value (\`Estimate\`) to take ownership.  Compared to a tuple, the field names document what each piece means — \`e.is_two_sided_matching\` reads better than \`e.3\`.`,
+        code: `// Declaration — named fields, each with its own type.
+struct Estimate {
+    description:                   String,        // owns the text
+    proposed_tool:                 &'static str,  // borrowed literal
+    has_positive_weights_only:     bool,
+    is_two_sided_matching:         bool,
+    has_only_continuous_vars:      bool,
+    every_constraint_has_two_vars: bool,
+    data_is_dag:                   bool,
+    has_matroid_structure:         bool,
+}
+
+
+// Construction — struct literal syntax with named fields:
+let e = Estimate {
+    description:                   String::from("Match drivers to deliveries"),
+    proposed_tool:                 "writing a SAT solver",
+    has_positive_weights_only:     false,
+    is_two_sided_matching:         true,
+    has_only_continuous_vars:      false,
+    every_constraint_has_two_vars: false,
+    data_is_dag:                   false,
+    has_matroid_structure:         false,
+};
+
+
+// Field access with .
+let tool = e.proposed_tool;
+let bipartite = e.is_two_sided_matching;
+
+
+// Pass by reference for read-only inspection — page 39's signature:
+fn wrong_category(e: &Estimate) -> Vec<&'static str> { /* ... */ }
+let flags = wrong_category(&e);
+
+
+// Pass by mutable reference to update in place:
+fn mark_as_dag(e: &mut Estimate) {
+    e.data_is_dag = true;
+}
+
+
+// Two ergonomic shorthands worth knowing:
+
+// 1. Field init shorthand — when a variable matches a field name,
+//    you can omit the colon and value:
+let description = String::from("...");
+let proposed_tool = "dijkstra";
+let e = Estimate {
+    description,                       // shorthand for description: description
+    proposed_tool,                     // shorthand for proposed_tool: proposed_tool
+    has_positive_weights_only: true,
+    is_two_sided_matching: false,
+    has_only_continuous_vars: false,
+    every_constraint_has_two_vars: false,
+    data_is_dag: false,
+    has_matroid_structure: false,
+};
+
+// 2. Struct-update syntax — copy any missing fields from another value:
+let e2 = Estimate {
+    description: String::from("revised"),
+    ..e                                // every other field copied from e
+};
+
+
+// Three flavors of struct, briefly:
+//
+//   struct Foo { x: i32, y: i32 }     named fields    ← the common case
+//   struct Bar(i32, i32);              tuple struct   ← positional access (.0, .1)
+//   struct Baz;                         unit struct    ← no fields, type-level marker
+//
+// Unit structs are surprisingly useful for type-level state machines
+// and zero-sized markers.`,
         lang: 'rust'
       }
     ],
