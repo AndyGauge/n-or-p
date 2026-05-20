@@ -8,6 +8,7 @@
 //      without manual [[term]] sprinkling.
 
 import { md as baseMd, mdBlock as baseMdBlock, slug } from 'sveltekitbook/md';
+import { base } from '$app/paths';
 import { GLOSSARY } from './glossary.js';
 
 // ── Lookup tables ──────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ function escapeAttr(s) {
 }
 
 function buildLink(canonical, label) {
-  return `<a class="hw-glossary-link" href="/glossary#${slug(canonical)}" data-term="${escapeAttr(canonical)}">${label}</a>`;
+  return `<a class="hw-glossary-link" href="${base}/glossary#${slug(canonical)}" data-term="${escapeAttr(canonical)}">${label}</a>`;
 }
 
 // Add data-term to glossary links emitted by the base renderer ([[term]]).
@@ -114,11 +115,11 @@ function process(html) {
 // ── Public API ─────────────────────────────────────────────────────────
 
 export function md(text, opts) {
-  return process(baseMd(text, opts));
+  return process(baseMd(text, { glossaryBase: `${base}/glossary`, ...opts }));
 }
 
 export function mdBlock(text, opts) {
-  return process(baseMdBlock(text, opts));
+  return process(baseMdBlock(text, { glossaryBase: `${base}/glossary`, ...opts }));
 }
 
 export { slug };
